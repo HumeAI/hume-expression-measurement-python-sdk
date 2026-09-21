@@ -15,7 +15,6 @@ from ..types.face_session_closed import FaceSessionClosed
 from ..types.face_session_created import FaceSessionCreated
 from ..types.face_session_update import FaceSessionUpdate
 from ..types.face_session_updated import FaceSessionUpdated
-from ..types.image_frame import ImageFrame
 from ..types.session_close import SessionClose
 
 try:
@@ -91,12 +90,12 @@ class AsyncFaceSocketClient(EventEmitterMixin):
         """
         await self._send_model(message)
 
-    async def send_image_frame(self, message: ImageFrame) -> None:
+    async def send_image_frame(self, message: bytes) -> None:
         """
         Send a message to the websocket connection.
-        The message will be sent as a ImageFrame.
+        The message will be sent as a bytes.
         """
-        await self._send_model(message)
+        await self._send(message)
 
     async def recv(self) -> FaceSocketClientResponse:
         """
@@ -189,12 +188,12 @@ class FaceSocketClient(EventEmitterMixin):
         """
         self._send_model(message)
 
-    def send_image_frame(self, message: ImageFrame) -> None:
+    def send_image_frame(self, message: bytes) -> None:
         """
         Send a message to the websocket connection.
-        The message will be sent as a ImageFrame.
+        The message will be sent as a bytes.
         """
-        self._send_model(message)
+        self._send(message)
 
     def recv(self) -> FaceSocketClientResponse:
         """

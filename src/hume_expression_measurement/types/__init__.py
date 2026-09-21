@@ -12,7 +12,6 @@ if typing.TYPE_CHECKING:
     from .audio_config_update import AudioConfigUpdate
     from .audio_config_update_encoding import AudioConfigUpdateEncoding
     from .audio_config_update_type import AudioConfigUpdateType
-    from .audio_frame import AudioFrame
     from .bounding_box import BoundingBox
     from .close_reason import CloseReason
     from .error import Error
@@ -41,7 +40,6 @@ if typing.TYPE_CHECKING:
     from .image_config_type import ImageConfigType
     from .image_config_update import ImageConfigUpdate
     from .image_config_update_type import ImageConfigUpdateType
-    from .image_frame import ImageFrame
     from .measurement_timer_ms import MeasurementTimerMs
     from .measurement_trigger import MeasurementTrigger
     from .session_close import SessionClose
@@ -74,7 +72,6 @@ _dynamic_imports: typing.Dict[str, str] = {
     "AudioConfigUpdate": ".audio_config_update",
     "AudioConfigUpdateEncoding": ".audio_config_update_encoding",
     "AudioConfigUpdateType": ".audio_config_update_type",
-    "AudioFrame": ".audio_frame",
     "BoundingBox": ".bounding_box",
     "CloseReason": ".close_reason",
     "Error": ".error",
@@ -103,7 +100,6 @@ _dynamic_imports: typing.Dict[str, str] = {
     "ImageConfigType": ".image_config_type",
     "ImageConfigUpdate": ".image_config_update",
     "ImageConfigUpdateType": ".image_config_update_type",
-    "ImageFrame": ".image_frame",
     "MeasurementTimerMs": ".measurement_timer_ms",
     "MeasurementTrigger": ".measurement_trigger",
     "SessionClose": ".session_close",
@@ -160,7 +156,6 @@ __all__ = [
     "AudioConfigUpdate",
     "AudioConfigUpdateEncoding",
     "AudioConfigUpdateType",
-    "AudioFrame",
     "BoundingBox",
     "CloseReason",
     "Error",
@@ -189,7 +184,6 @@ __all__ = [
     "ImageConfigType",
     "ImageConfigUpdate",
     "ImageConfigUpdateType",
-    "ImageFrame",
     "MeasurementTimerMs",
     "MeasurementTrigger",
     "SessionClose",
