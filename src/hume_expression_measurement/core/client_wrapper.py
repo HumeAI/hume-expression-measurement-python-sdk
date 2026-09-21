@@ -37,7 +37,7 @@ class BaseClientWrapper:
             "X-Fern-Runtime": f"python/{platform.python_version()}",
             "X-Fern-Platform": f"{platform.system().lower()}/{platform.release()}",
             "X-Fern-SDK-Name": "hume-expression-measurement",
-            "X-Fern-SDK-Version": "0.0.78",
+            "X-Fern-SDK-Version": "0.0.84",
             **(self.get_custom_headers() or {}),
         }
         headers["X-Hume-Api-Key"] = self.api_key
