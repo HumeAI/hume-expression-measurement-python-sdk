@@ -9,8 +9,9 @@
       "class_name": "ExpressionMeasurementClient"
     }
   },
-  "originGitCommit": "3da41fbd25a7e12331d16efabb4a45ce8d040c58",
+  "originGitCommit": "77e63873f7377515fedccb08dab590411e64d9bb",
   "originGitCommitIsDirty": false,
-  "invokedBy": "manual",
-  "sdkVersion": "0.0.78"
+  "invokedBy": "ci",
+  "ciProvider": "github",
+  "sdkVersion": "0.0.88"
 }

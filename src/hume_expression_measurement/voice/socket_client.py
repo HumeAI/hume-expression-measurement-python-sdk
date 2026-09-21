@@ -9,7 +9,6 @@ import websockets
 import websockets.sync.connection as websockets_sync_connection
 from ..core.events import EventEmitterMixin, EventType
 from ..core.pydantic_utilities import parse_obj_as
-from ..types.audio_frame import AudioFrame
 from ..types.error import Error
 from ..types.session_close import SessionClose
 from ..types.utterance_end import UtteranceEnd
@@ -99,12 +98,12 @@ class AsyncVoiceSocketClient(EventEmitterMixin):
         """
         await self._send_model(message)
 
-    async def send_audio_frame(self, message: AudioFrame) -> None:
+    async def send_audio_frame(self, message: bytes) -> None:
         """
         Send a message to the websocket connection.
-        The message will be sent as a AudioFrame.
+        The message will be sent as a bytes.
         """
-        await self._send_model(message)
+        await self._send(message)
 
     async def recv(self) -> VoiceSocketClientResponse:
         """
@@ -197,12 +196,12 @@ class VoiceSocketClient(EventEmitterMixin):
         """
         self._send_model(message)
 
-    def send_audio_frame(self, message: AudioFrame) -> None:
+    def send_audio_frame(self, message: bytes) -> None:
         """
         Send a message to the websocket connection.
-        The message will be sent as a AudioFrame.
+        The message will be sent as a bytes.
         """
-        self._send_model(message)
+        self._send(message)
 
     def recv(self) -> VoiceSocketClientResponse:
         """
