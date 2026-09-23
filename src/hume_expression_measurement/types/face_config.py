@@ -8,7 +8,7 @@ from ..core.pydantic_utilities import IS_PYDANTIC_V2, UniversalBaseModel
 
 class FaceConfig(UniversalBaseModel):
     """
-    The face detection settings in effect for the session.
+    The face detection settings.
     """
 
     threshold: float = pydantic.Field()

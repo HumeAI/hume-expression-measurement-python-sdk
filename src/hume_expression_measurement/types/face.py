@@ -11,12 +11,12 @@ from .face_expression_score import FaceExpressionScore
 
 class Face(UniversalBaseModel):
     """
-    A face detected in the frame, with its expression measurements.
+    A face detected in the image, with its expression measurements.
     """
 
     face_id: int = pydantic.Field()
     """
-    Tracks this face across frames within the session. IDs are assigned from 0 in the order faces first appear, and a face normally keeps its ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs restart in every session and do not identify a person.
+    Tracks this face across the images of a realtime session or a file request. IDs are assigned from 0 in the order faces first appear, and a face normally keeps its ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs restart in every session and every file request, unless a file request continues them with a `face_state`, and do not identify a person.
     """
 
     bbox: BoundingBox

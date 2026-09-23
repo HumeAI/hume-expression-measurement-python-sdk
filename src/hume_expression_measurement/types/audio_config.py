@@ -10,7 +10,7 @@ from .audio_config_type import AudioConfigType
 
 class AudioConfig(UniversalBaseModel):
     """
-    The audio format in effect for the session.
+    The audio format.
     """
 
     type: AudioConfigType

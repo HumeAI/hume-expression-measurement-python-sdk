@@ -5,6 +5,7 @@ import urllib.parse
 from contextlib import asynccontextmanager, contextmanager
 
 import websockets.sync.client as websockets_sync_client
+from .. import core
 from ..core.api_error import ApiError
 from ..core.client_wrapper import AsyncClientWrapper, SyncClientWrapper
 from ..core.jsonable_encoder import jsonable_encoder
@@ -12,6 +13,8 @@ from ..core.query_encoder import encode_query
 from ..core.remove_none_from_dict import remove_none_from_dict
 from ..core.request_options import RequestOptions
 from ..core.websocket_compat import InvalidWebSocketStatus, get_status_code
+from ..types.face_file_config import FaceFileConfig
+from ..types.face_file_response import FaceFileResponse
 from .raw_client import AsyncRawFaceClient, RawFaceClient
 from .socket_client import AsyncFaceSocketClient, FaceSocketClient
 
@@ -19,6 +22,9 @@ try:
     from websockets.legacy.client import connect as websockets_client_connect  # type: ignore
 except ImportError:
     from websockets import connect as websockets_client_connect  # type: ignore
+
+# this is used as the default value for optional parameters
+OMIT = typing.cast(typing.Any, ...)
 
 
 class FaceClient:
@@ -36,6 +42,60 @@ class FaceClient:
         """
         return self._raw_client
 
+    def measure(
+        self,
+        *,
+        file: typing.List[core.File],
+        config: typing.Optional[FaceFileConfig] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> FaceFileResponse:
+        """
+        Send one or more images, each as a `file` part, and, to change the defaults, settings as a JSON `config` part. The response holds one result per image, in the order the parts were sent, with the measurements for every face found in it. An image with no faces is a normal result with an empty `faces` array.
+
+        ## Detection and measurement
+
+        The server detects the faces in each image. It does not measure a face whose detection confidence is below `face.threshold`, or whose bounding box is under `face.min_size` pixels on its shorter side. Of the rest, it measures up to 64, most confident first, and lists them in `faces` in that order. Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+
+        `face_id` tracks a face across the images of one request. A face normally keeps the same ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs do not identify a person. To keep IDs consistent across requests, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request; otherwise IDs start again from 0 in every request.
+
+        ## Limits
+
+        | Limit | Value |
+        |---|---|
+        | Request size | 25,000,000 bytes, the whole multipart body |
+        | Image size | 2,000,000 bytes |
+        | Pixels per image | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Faces measured per image | 64 |
+
+        The request is measured as a whole: an image that is not a JPEG, is over a size limit or cannot be decoded fails the request with `unsupported_media_type`, `image_too_large` or `image_decode_failed`, and no result is returned for any image.
+
+        Parameters
+        ----------
+        file : typing.List[core.File]
+            See core.File for more documentation
+
+        config : typing.Optional[FaceFileConfig]
+
+        request_options : typing.Optional[RequestOptions]
+            Request-specific configuration.
+
+        Returns
+        -------
+        FaceFileResponse
+            One result per image, in the order sent.
+
+        Examples
+        --------
+        from hume_expression_measurement import ExpressionMeasurementClient
+
+        client = ExpressionMeasurementClient(
+            api_key="YOUR_API_KEY",
+        )
+        client.face.measure()
+        """
+        _response = self._raw_client.measure(file=file, config=config, request_options=request_options)
+        return _response.data
+
     @contextmanager
     def connect(self, *, request_options: typing.Optional[RequestOptions] = None) -> typing.Iterator[FaceSocketClient]:
         """
@@ -45,7 +105,7 @@ class FaceClient:
 
         Send each frame as one binary message containing a complete JPEG image. Every frame receives a reply: a `measurement.result`, or an `error` if the frame was rejected or its measurement failed. A frame that is empty, is not a JPEG, or has more pixels than the limit is rejected with `invalid_image_frame`. Any message larger than the message size limit, whether a frame or a text message, ends the session with `message_too_large`.
 
-        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame the server reads, including one rejected with `invalid_image_frame`; a frame rejected with `rate_limited` or `overloaded` does not lock it. A `session.update` after that ends the session with `config_invalid`.
+        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame that passes the send-rate and capacity checks, even if that frame is then rejected with `invalid_image_frame` because it is not a JPEG. An empty frame, or one rejected with `rate_limited` or `overloaded`, does not lock it. A `session.update` after that ends the session with `config_invalid`.
 
         The server accepts the first 30 frames immediately, then 30 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and a frame that arrives while the server is at capacity is rejected with `overloaded`. In both cases the frame is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again.
 
@@ -102,7 +162,7 @@ class FaceClient:
         -------
         FaceSocketClient
         """
-        ws_url = self._raw_client._client_wrapper.get_base_url() + "/v1/expression/face/realtime"
+        ws_url = self._raw_client._client_wrapper.get_environment().production + "/v1/expression/face/realtime"
         _encoded_query_params = encode_query(
             jsonable_encoder(
                 remove_none_from_dict(
@@ -154,6 +214,68 @@ class AsyncFaceClient:
         """
         return self._raw_client
 
+    async def measure(
+        self,
+        *,
+        file: typing.List[core.File],
+        config: typing.Optional[FaceFileConfig] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> FaceFileResponse:
+        """
+        Send one or more images, each as a `file` part, and, to change the defaults, settings as a JSON `config` part. The response holds one result per image, in the order the parts were sent, with the measurements for every face found in it. An image with no faces is a normal result with an empty `faces` array.
+
+        ## Detection and measurement
+
+        The server detects the faces in each image. It does not measure a face whose detection confidence is below `face.threshold`, or whose bounding box is under `face.min_size` pixels on its shorter side. Of the rest, it measures up to 64, most confident first, and lists them in `faces` in that order. Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+
+        `face_id` tracks a face across the images of one request. A face normally keeps the same ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs do not identify a person. To keep IDs consistent across requests, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request; otherwise IDs start again from 0 in every request.
+
+        ## Limits
+
+        | Limit | Value |
+        |---|---|
+        | Request size | 25,000,000 bytes, the whole multipart body |
+        | Image size | 2,000,000 bytes |
+        | Pixels per image | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Faces measured per image | 64 |
+
+        The request is measured as a whole: an image that is not a JPEG, is over a size limit or cannot be decoded fails the request with `unsupported_media_type`, `image_too_large` or `image_decode_failed`, and no result is returned for any image.
+
+        Parameters
+        ----------
+        file : typing.List[core.File]
+            See core.File for more documentation
+
+        config : typing.Optional[FaceFileConfig]
+
+        request_options : typing.Optional[RequestOptions]
+            Request-specific configuration.
+
+        Returns
+        -------
+        FaceFileResponse
+            One result per image, in the order sent.
+
+        Examples
+        --------
+        import asyncio
+
+        from hume_expression_measurement import AsyncExpressionMeasurementClient
+
+        client = AsyncExpressionMeasurementClient(
+            api_key="YOUR_API_KEY",
+        )
+
+
+        async def main() -> None:
+            await client.face.measure()
+
+
+        asyncio.run(main())
+        """
+        _response = await self._raw_client.measure(file=file, config=config, request_options=request_options)
+        return _response.data
+
     @asynccontextmanager
     async def connect(
         self, *, request_options: typing.Optional[RequestOptions] = None
@@ -165,7 +287,7 @@ class AsyncFaceClient:
 
         Send each frame as one binary message containing a complete JPEG image. Every frame receives a reply: a `measurement.result`, or an `error` if the frame was rejected or its measurement failed. A frame that is empty, is not a JPEG, or has more pixels than the limit is rejected with `invalid_image_frame`. Any message larger than the message size limit, whether a frame or a text message, ends the session with `message_too_large`.
 
-        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame the server reads, including one rejected with `invalid_image_frame`; a frame rejected with `rate_limited` or `overloaded` does not lock it. A `session.update` after that ends the session with `config_invalid`.
+        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame that passes the send-rate and capacity checks, even if that frame is then rejected with `invalid_image_frame` because it is not a JPEG. An empty frame, or one rejected with `rate_limited` or `overloaded`, does not lock it. A `session.update` after that ends the session with `config_invalid`.
 
         The server accepts the first 30 frames immediately, then 30 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and a frame that arrives while the server is at capacity is rejected with `overloaded`. In both cases the frame is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again.
 
@@ -222,7 +344,7 @@ class AsyncFaceClient:
         -------
         AsyncFaceSocketClient
         """
-        ws_url = self._raw_client._client_wrapper.get_base_url() + "/v1/expression/face/realtime"
+        ws_url = self._raw_client._client_wrapper.get_environment().production + "/v1/expression/face/realtime"
         _encoded_query_params = encode_query(
             jsonable_encoder(
                 remove_none_from_dict(

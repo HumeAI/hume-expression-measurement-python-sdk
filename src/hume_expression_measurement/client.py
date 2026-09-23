@@ -13,6 +13,7 @@ from .environment import ExpressionMeasurementClientEnvironment
 
 if typing.TYPE_CHECKING:
     from .face.client import AsyncFaceClient, FaceClient
+    from .runs.client import AsyncRunsClient, RunsClient
     from .voice.client import AsyncVoiceClient, VoiceClient
 
 
@@ -22,9 +23,6 @@ class ExpressionMeasurementClient:
 
     Parameters
     ----------
-    base_url : typing.Optional[str]
-        The base url to use for requests from the client.
-
     environment : ExpressionMeasurementClientEnvironment
         The environment to use for requests from the client. from .environment import ExpressionMeasurementClientEnvironment
 
@@ -71,7 +69,6 @@ class ExpressionMeasurementClient:
     def __init__(
         self,
         *,
-        base_url: typing.Optional[str] = None,
         environment: ExpressionMeasurementClientEnvironment = ExpressionMeasurementClientEnvironment.PRODUCTION,
         api_key: typing.Optional[str] = os.getenv("HUME_API_KEY"),
         headers: typing.Optional[typing.Dict[str, str]] = None,
@@ -88,7 +85,7 @@ class ExpressionMeasurementClient:
         if api_key is None:
             raise ApiError(body="The client must be instantiated be either passing in api_key or setting HUME_API_KEY")
         self._client_wrapper = SyncClientWrapper(
-            base_url=_get_base_url(base_url=base_url, environment=environment),
+            environment=environment,
             api_key=api_key,
             headers=headers,
             httpx_client=httpx_client
@@ -104,6 +101,7 @@ class ExpressionMeasurementClient:
         )
         self._voice: typing.Optional[VoiceClient] = None
         self._face: typing.Optional[FaceClient] = None
+        self._runs: typing.Optional[RunsClient] = None
 
     @property
     def voice(self):
@@ -120,6 +118,14 @@ class ExpressionMeasurementClient:
 
             self._face = FaceClient(client_wrapper=self._client_wrapper)
         return self._face
+
+    @property
+    def runs(self):
+        if self._runs is None:
+            from .runs.client import RunsClient  # noqa: E402
+
+            self._runs = RunsClient(client_wrapper=self._client_wrapper)
+        return self._runs
 
 
 def _make_default_async_client(
@@ -146,9 +152,6 @@ class AsyncExpressionMeasurementClient:
 
     Parameters
     ----------
-    base_url : typing.Optional[str]
-        The base url to use for requests from the client.
-
     environment : ExpressionMeasurementClientEnvironment
         The environment to use for requests from the client. from .environment import ExpressionMeasurementClientEnvironment
 
@@ -195,7 +198,6 @@ class AsyncExpressionMeasurementClient:
     def __init__(
         self,
         *,
-        base_url: typing.Optional[str] = None,
         environment: ExpressionMeasurementClientEnvironment = ExpressionMeasurementClientEnvironment.PRODUCTION,
         api_key: typing.Optional[str] = os.getenv("HUME_API_KEY"),
         headers: typing.Optional[typing.Dict[str, str]] = None,
@@ -212,7 +214,7 @@ class AsyncExpressionMeasurementClient:
         if api_key is None:
             raise ApiError(body="The client must be instantiated be either passing in api_key or setting HUME_API_KEY")
         self._client_wrapper = AsyncClientWrapper(
-            base_url=_get_base_url(base_url=base_url, environment=environment),
+            environment=environment,
             api_key=api_key,
             headers=headers,
             httpx_client=httpx_client
@@ -226,6 +228,7 @@ class AsyncExpressionMeasurementClient:
         )
         self._voice: typing.Optional[AsyncVoiceClient] = None
         self._face: typing.Optional[AsyncFaceClient] = None
+        self._runs: typing.Optional[AsyncRunsClient] = None
 
     @property
     def voice(self):
@@ -243,11 +246,10 @@ class AsyncExpressionMeasurementClient:
             self._face = AsyncFaceClient(client_wrapper=self._client_wrapper)
         return self._face
 
+    @property
+    def runs(self):
+        if self._runs is None:
+            from .runs.client import AsyncRunsClient  # noqa: E402
 
-def _get_base_url(*, base_url: typing.Optional[str] = None, environment: ExpressionMeasurementClientEnvironment) -> str:
-    if base_url is not None:
-        return base_url
-    elif environment is not None:
-        return environment.value
-    else:
-        raise Exception("Please pass in either base_url or environment to construct the client")
+            self._runs = AsyncRunsClient(client_wrapper=self._client_wrapper)
+        return self._runs

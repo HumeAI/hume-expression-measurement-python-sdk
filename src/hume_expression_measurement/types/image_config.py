@@ -9,7 +9,7 @@ from .image_config_type import ImageConfigType
 
 class ImageConfig(UniversalBaseModel):
     """
-    The image format in effect for the session.
+    The image format.
     """
 
     type: ImageConfigType
