@@ -10,7 +10,7 @@ from .request_error_code import RequestErrorCode
 
 class ErrorBody(UniversalBaseModel):
     """
-    The body of every error response. `type` is always `error`; the HTTP status says how the request failed and `code` says why.
+    The body of every error response other than a `401`. `type` is always `error`; the HTTP status says how the request failed and `code` says why.
     """
 
     type: ErrorBodyType
@@ -22,7 +22,7 @@ class ErrorBody(UniversalBaseModel):
 
     request_id: typing.Optional[str] = pydantic.Field(default=None)
     """
-    Identifies the request in Hume's records. Quote it when contacting support. Absent on a `401`, which is answered before the request reaches the service.
+    Identifies the request in Hume's records. Quote it when contacting support.
     """
 
     if IS_PYDANTIC_V2:

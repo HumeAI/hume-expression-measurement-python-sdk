@@ -9,7 +9,6 @@ RequestErrorCode = typing.Union[
         "audio_decode_failed",
         "image_decode_failed",
         "invalid_request",
-        "unauthorized",
         "not_found",
         "conflict",
         "audio_too_large",

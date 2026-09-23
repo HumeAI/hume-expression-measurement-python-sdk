@@ -24,6 +24,7 @@ from ..errors.internal_server_error import InternalServerError
 from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
 from ..errors.unsupported_media_type_error import UnsupportedMediaTypeError
+from ..types.authentication_error import AuthenticationError
 from ..types.error_body import ErrorBody
 from ..types.face_file_config import FaceFileConfig
 from ..types.face_file_response import FaceFileResponse
@@ -127,9 +128,9 @@ class RawFaceClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -378,9 +379,9 @@ class AsyncRawFaceClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),

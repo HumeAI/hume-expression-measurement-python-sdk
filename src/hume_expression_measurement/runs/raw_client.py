@@ -20,6 +20,7 @@ from ..errors.internal_server_error import InternalServerError
 from ..errors.not_found_error import NotFoundError
 from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
+from ..types.authentication_error import AuthenticationError
 from ..types.error_body import ErrorBody
 from ..types.run import Run
 from ..types.run_endpoint import RunEndpoint
@@ -125,9 +126,9 @@ class RawRunsClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -200,9 +201,9 @@ class RawRunsClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -278,9 +279,9 @@ class RawRunsClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -403,9 +404,9 @@ class RawRunsClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -505,9 +506,9 @@ class RawRunsClient:
                         raise UnauthorizedError(
                             headers=dict(_response.headers),
                             body=typing.cast(
-                                ErrorBody,
+                                AuthenticationError,
                                 parse_obj_as(
-                                    type_=ErrorBody,  # type: ignore
+                                    type_=AuthenticationError,  # type: ignore
                                     object_=_response.json(),
                                 ),
                             ),
@@ -657,9 +658,9 @@ class AsyncRawRunsClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -734,9 +735,9 @@ class AsyncRawRunsClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -814,9 +815,9 @@ class AsyncRawRunsClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -939,9 +940,9 @@ class AsyncRawRunsClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -1041,9 +1042,9 @@ class AsyncRawRunsClient:
                         raise UnauthorizedError(
                             headers=dict(_response.headers),
                             body=typing.cast(
-                                ErrorBody,
+                                AuthenticationError,
                                 parse_obj_as(
-                                    type_=ErrorBody,  # type: ignore
+                                    type_=AuthenticationError,  # type: ignore
                                     object_=_response.json(),
                                 ),
                             ),

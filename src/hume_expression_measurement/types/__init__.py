@@ -12,6 +12,7 @@ if typing.TYPE_CHECKING:
     from .audio_config_update import AudioConfigUpdate
     from .audio_config_update_encoding import AudioConfigUpdateEncoding
     from .audio_config_update_type import AudioConfigUpdateType
+    from .authentication_error import AuthenticationError
     from .bounding_box import BoundingBox
     from .close_reason import CloseReason
     from .error import Error
@@ -99,6 +100,7 @@ _dynamic_imports: typing.Dict[str, str] = {
     "AudioConfigUpdate": ".audio_config_update",
     "AudioConfigUpdateEncoding": ".audio_config_update_encoding",
     "AudioConfigUpdateType": ".audio_config_update_type",
+    "AuthenticationError": ".authentication_error",
     "BoundingBox": ".bounding_box",
     "CloseReason": ".close_reason",
     "Error": ".error",
@@ -210,6 +212,7 @@ __all__ = [
     "AudioConfigUpdate",
     "AudioConfigUpdateEncoding",
     "AudioConfigUpdateType",
+    "AuthenticationError",
     "BoundingBox",
     "CloseReason",
     "Error",

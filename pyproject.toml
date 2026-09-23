@@ -4,7 +4,7 @@ dynamic = ["version"]
 
 [tool.poetry]
 name = "hume-expression-measurement"
-version = "0.0.99"
+version = "0.0.101"
 description = "A Python SDK for the Hume Expression Measurement API"
 readme = "README.md"
 authors = []

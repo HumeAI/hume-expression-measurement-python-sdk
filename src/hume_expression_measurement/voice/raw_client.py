@@ -24,6 +24,7 @@ from ..errors.internal_server_error import InternalServerError
 from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
 from ..errors.unsupported_media_type_error import UnsupportedMediaTypeError
+from ..types.authentication_error import AuthenticationError
 from ..types.error_body import ErrorBody
 from ..types.voice_file_config import VoiceFileConfig
 from ..types.voice_file_response import VoiceFileResponse
@@ -127,9 +128,9 @@ class RawVoiceClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -372,9 +373,9 @@ class AsyncRawVoiceClient:
                 raise UnauthorizedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
-                        ErrorBody,
+                        AuthenticationError,
                         parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
+                            type_=AuthenticationError,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
