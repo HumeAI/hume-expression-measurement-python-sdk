@@ -208,7 +208,9 @@ class RunsClient:
         )
         return _response.data
 
-    def get_results(self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None) -> str:
+    def get_results(
+        self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None
+    ) -> typing.Iterator[typing.Dict[str, typing.Any]]:
         """
         The results the run produced, as newline-delimited JSON rather than a JSON array. The first line identifies the run, as `{"type": "voice.realtime"}`, `{"type": "face.file"}` and so on; every line after it is a `measurement.result` as the run delivered it, and a voice run also carries its `utterance.end` events. The lines are the realtime API's `measurement.result` and `utterance.end` messages: for a realtime run they are the messages the session sent, and for a file run they are the response's elements with `type` added. If the stored results are missing a piece from their start or middle, the request fails with `internal_error` before any of the body is sent. Results missing from the end cannot be detected, so the body ends early instead, as described for `200`. If a stored part cannot be read once the body has started, the response ends short of the length its `Content-Length` header declares; treat a body shorter than that as a failed request.
 
@@ -220,9 +222,9 @@ class RunsClient:
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
-        Returns
-        -------
-        str
+        Yields
+        ------
+        typing.Iterator[typing.Dict[str, typing.Any]]
             One JSON object per line. The first line identifies the run, so a run with no stored results has an empty body and no first line. Results are stored as a run produces them, but storage never delays a measurement, so the stored results can be empty or end early even when the run produced more. A run still in progress returns the results stored so far.
 
         Examples
@@ -232,12 +234,14 @@ class RunsClient:
         client = ExpressionMeasurementClient(
             api_key="YOUR_API_KEY",
         )
-        client.runs.get_results(
+        response = client.runs.get_results(
             run_id="01926f3c-d33c-7c9f-9c91-4502d80834d5",
         )
+        for chunk in response:
+            yield chunk
         """
-        _response = self._raw_client.get_results(run_id, request_options=request_options)
-        return _response.data
+        with self._raw_client.get_results(run_id, request_options=request_options) as r:
+            yield from r.data
 
 
 class AsyncRunsClient:
@@ -466,7 +470,9 @@ class AsyncRunsClient:
         )
         return _response.data
 
-    async def get_results(self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None) -> str:
+    async def get_results(
+        self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None
+    ) -> typing.AsyncIterator[typing.Dict[str, typing.Any]]:
         """
         The results the run produced, as newline-delimited JSON rather than a JSON array. The first line identifies the run, as `{"type": "voice.realtime"}`, `{"type": "face.file"}` and so on; every line after it is a `measurement.result` as the run delivered it, and a voice run also carries its `utterance.end` events. The lines are the realtime API's `measurement.result` and `utterance.end` messages: for a realtime run they are the messages the session sent, and for a file run they are the response's elements with `type` added. If the stored results are missing a piece from their start or middle, the request fails with `internal_error` before any of the body is sent. Results missing from the end cannot be detected, so the body ends early instead, as described for `200`. If a stored part cannot be read once the body has started, the response ends short of the length its `Content-Length` header declares; treat a body shorter than that as a failed request.
 
@@ -478,9 +484,9 @@ class AsyncRunsClient:
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
 
-        Returns
-        -------
-        str
+        Yields
+        ------
+        typing.AsyncIterator[typing.Dict[str, typing.Any]]
             One JSON object per line. The first line identifies the run, so a run with no stored results has an empty body and no first line. Results are stored as a run produces them, but storage never delays a measurement, so the stored results can be empty or end early even when the run produced more. A run still in progress returns the results stored so far.
 
         Examples
@@ -495,12 +501,15 @@ class AsyncRunsClient:
 
 
         async def main() -> None:
-            await client.runs.get_results(
+            response = client.runs.get_results(
                 run_id="01926f3c-d33c-7c9f-9c91-4502d80834d5",
             )
+            async for chunk in response:
+                yield chunk
 
 
         asyncio.run(main())
         """
-        _response = await self._raw_client.get_results(run_id, request_options=request_options)
-        return _response.data
+        async with self._raw_client.get_results(run_id, request_options=request_options) as r:
+            async for _chunk in r.data:
+                yield _chunk
