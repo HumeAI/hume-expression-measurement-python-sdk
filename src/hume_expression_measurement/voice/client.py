@@ -5,6 +5,7 @@ import urllib.parse
 from contextlib import asynccontextmanager, contextmanager
 
 import websockets.sync.client as websockets_sync_client
+from .. import core
 from ..core.api_error import ApiError
 from ..core.client_wrapper import AsyncClientWrapper, SyncClientWrapper
 from ..core.jsonable_encoder import jsonable_encoder
@@ -12,6 +13,8 @@ from ..core.query_encoder import encode_query
 from ..core.remove_none_from_dict import remove_none_from_dict
 from ..core.request_options import RequestOptions
 from ..core.websocket_compat import InvalidWebSocketStatus, get_status_code
+from ..types.voice_file_config import VoiceFileConfig
+from ..types.voice_file_response import VoiceFileResponse
 from .raw_client import AsyncRawVoiceClient, RawVoiceClient
 from .socket_client import AsyncVoiceSocketClient, VoiceSocketClient
 
@@ -19,6 +22,9 @@ try:
     from websockets.legacy.client import connect as websockets_client_connect  # type: ignore
 except ImportError:
     from websockets import connect as websockets_client_connect  # type: ignore
+
+# this is used as the default value for optional parameters
+OMIT = typing.cast(typing.Any, ...)
 
 
 class VoiceClient:
@@ -35,6 +41,60 @@ class VoiceClient:
         RawVoiceClient
         """
         return self._raw_client
+
+    def measure(
+        self,
+        *,
+        file: core.File,
+        config: typing.Optional[VoiceFileConfig] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> VoiceFileResponse:
+        """
+        Send the audio as the `file` part and, to change the defaults, settings as a JSON `config` part. The response holds every utterance found in the audio and every measurement taken, the same results a realtime session would stream for the same audio.
+
+        ## How measurements are produced
+
+        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, listed in `utterances` with its span in the audio. Every measurement in `measurements` carries the `utterance_id` it belongs to, the span of audio it covers as `audio_start_ms` and `audio_end_ms`, and a `trigger` saying why it was produced. All times count from the start of the audio.
+
+        While an utterance is in progress, the server produces a measurement every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`. Each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter than that. Consecutive interval measurements therefore overlap; at the maximum `measurement_timer_ms` of 10000 they meet end to end instead.
+
+        When an utterance ends, the server produces a final measurement with `trigger` set to `speech_ended`, unless less than one second of speech has passed since the previous measurement ended. Every utterance produces at least one measurement: an utterance shorter than `measurement_timer_ms` has no interval measurements, so its final measurement is always produced. Audio that ends while speech is in progress ends the utterance.
+
+        ## Limits
+
+        | Limit | Value |
+        |---|---|
+        | Request size | 25,000,000 bytes, the whole multipart body |
+        | Audio format | 16-bit PCM, 16 kHz, mono, as a WAV file or headerless samples |
+
+        A request over the size limit is rejected with `audio_too_large`. Audio in another container, such as MP3 or FLAC, is rejected with `unsupported_media_type`; convert it before sending. A WAV file at another sample rate, channel count or sample format is rejected with `audio_decode_failed` rather than converted.
+
+        Parameters
+        ----------
+        file : core.File
+            See core.File for more documentation
+
+        config : typing.Optional[VoiceFileConfig]
+
+        request_options : typing.Optional[RequestOptions]
+            Request-specific configuration.
+
+        Returns
+        -------
+        VoiceFileResponse
+            Every utterance and measurement in the audio.
+
+        Examples
+        --------
+        from hume_expression_measurement import ExpressionMeasurementClient
+
+        client = ExpressionMeasurementClient(
+            api_key="YOUR_API_KEY",
+        )
+        client.voice.measure()
+        """
+        _response = self._raw_client.measure(file=file, config=config, request_options=request_options)
+        return _response.data
 
     @contextmanager
     def connect(self, *, request_options: typing.Optional[RequestOptions] = None) -> typing.Iterator[VoiceSocketClient]:
@@ -96,7 +156,7 @@ class VoiceClient:
         -------
         VoiceSocketClient
         """
-        ws_url = self._raw_client._client_wrapper.get_base_url() + "/v1/expression/voice/realtime"
+        ws_url = self._raw_client._client_wrapper.get_environment().production + "/v1/expression/voice/realtime"
         _encoded_query_params = encode_query(
             jsonable_encoder(
                 remove_none_from_dict(
@@ -147,6 +207,68 @@ class AsyncVoiceClient:
         AsyncRawVoiceClient
         """
         return self._raw_client
+
+    async def measure(
+        self,
+        *,
+        file: core.File,
+        config: typing.Optional[VoiceFileConfig] = OMIT,
+        request_options: typing.Optional[RequestOptions] = None,
+    ) -> VoiceFileResponse:
+        """
+        Send the audio as the `file` part and, to change the defaults, settings as a JSON `config` part. The response holds every utterance found in the audio and every measurement taken, the same results a realtime session would stream for the same audio.
+
+        ## How measurements are produced
+
+        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, listed in `utterances` with its span in the audio. Every measurement in `measurements` carries the `utterance_id` it belongs to, the span of audio it covers as `audio_start_ms` and `audio_end_ms`, and a `trigger` saying why it was produced. All times count from the start of the audio.
+
+        While an utterance is in progress, the server produces a measurement every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`. Each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter than that. Consecutive interval measurements therefore overlap; at the maximum `measurement_timer_ms` of 10000 they meet end to end instead.
+
+        When an utterance ends, the server produces a final measurement with `trigger` set to `speech_ended`, unless less than one second of speech has passed since the previous measurement ended. Every utterance produces at least one measurement: an utterance shorter than `measurement_timer_ms` has no interval measurements, so its final measurement is always produced. Audio that ends while speech is in progress ends the utterance.
+
+        ## Limits
+
+        | Limit | Value |
+        |---|---|
+        | Request size | 25,000,000 bytes, the whole multipart body |
+        | Audio format | 16-bit PCM, 16 kHz, mono, as a WAV file or headerless samples |
+
+        A request over the size limit is rejected with `audio_too_large`. Audio in another container, such as MP3 or FLAC, is rejected with `unsupported_media_type`; convert it before sending. A WAV file at another sample rate, channel count or sample format is rejected with `audio_decode_failed` rather than converted.
+
+        Parameters
+        ----------
+        file : core.File
+            See core.File for more documentation
+
+        config : typing.Optional[VoiceFileConfig]
+
+        request_options : typing.Optional[RequestOptions]
+            Request-specific configuration.
+
+        Returns
+        -------
+        VoiceFileResponse
+            Every utterance and measurement in the audio.
+
+        Examples
+        --------
+        import asyncio
+
+        from hume_expression_measurement import AsyncExpressionMeasurementClient
+
+        client = AsyncExpressionMeasurementClient(
+            api_key="YOUR_API_KEY",
+        )
+
+
+        async def main() -> None:
+            await client.voice.measure()
+
+
+        asyncio.run(main())
+        """
+        _response = await self._raw_client.measure(file=file, config=config, request_options=request_options)
+        return _response.data
 
     @asynccontextmanager
     async def connect(
@@ -210,7 +332,7 @@ class AsyncVoiceClient:
         -------
         AsyncVoiceSocketClient
         """
-        ws_url = self._raw_client._client_wrapper.get_base_url() + "/v1/expression/voice/realtime"
+        ws_url = self._raw_client._client_wrapper.get_environment().production + "/v1/expression/voice/realtime"
         _encoded_query_params = encode_query(
             jsonable_encoder(
                 remove_none_from_dict(

@@ -39,12 +39,12 @@ class VoiceMeasurementResult(UniversalBaseModel):
     trigger: MeasurementTrigger
     expressions: typing.List[VoiceExpressionScore] = pydantic.Field()
     """
-    Expressions detected in the speech, such as `joy`, `anger` and `chuckling`, in descending order of probability, then by name. Only scores above 0.1 are included, so the array may be empty.
+    Expressions detected in the speech, such as `joy`, `anger` and `chuckling`, in descending order of probability. Only expressions the model judges present are included, each against its own fitted threshold, so the array may be empty. `probability` is calibrated: the measured chance the expression is truly present, at most 0.75.
     """
 
     voice_attributes: typing.List[VoiceAttributeScore] = pydantic.Field()
     """
-    Qualities of the voice and the audio, such as `breathy`, `fast` and `background music`, in descending order of probability, then by name. Only scores above 0.1 are included, so the array may be empty.
+    Qualities of the voice and the audio, such as `breathy`, `fast` and `background music`, in descending order of probability, then by name. Only scores of 0.85 or above are included, the model's display rule, so the array may be empty.
     """
 
     if IS_PYDANTIC_V2:

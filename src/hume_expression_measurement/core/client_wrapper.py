@@ -3,6 +3,7 @@
 import typing
 
 import httpx
+from ..environment import ExpressionMeasurementClientEnvironment
 from .http_client import AsyncHttpClient, HttpClient
 from .logging import LogConfig, Logger
 
@@ -13,7 +14,7 @@ class BaseClientWrapper:
         *,
         api_key: str,
         headers: typing.Optional[typing.Dict[str, str]] = None,
-        base_url: str,
+        environment: ExpressionMeasurementClientEnvironment,
         timeout: typing.Optional[float] = None,
         max_retries: int = 2,
         stream_reconnection_enabled: typing.Optional[bool] = None,
@@ -22,7 +23,7 @@ class BaseClientWrapper:
     ):
         self.api_key = api_key
         self._headers = headers
-        self._base_url = base_url
+        self._environment = environment
         self._timeout = timeout
         self._max_retries = max_retries
         self._stream_reconnection_enabled = stream_reconnection_enabled
@@ -37,7 +38,7 @@ class BaseClientWrapper:
             "X-Fern-Runtime": f"python/{platform.python_version()}",
             "X-Fern-Platform": f"{platform.system().lower()}/{platform.release()}",
             "X-Fern-SDK-Name": "hume-expression-measurement",
-            "X-Fern-SDK-Version": "0.0.88",
+            "X-Fern-SDK-Version": "0.0.93",
             **(self.get_custom_headers() or {}),
         }
         headers["X-Hume-Api-Key"] = self.api_key
@@ -46,8 +47,8 @@ class BaseClientWrapper:
     def get_custom_headers(self) -> typing.Optional[typing.Dict[str, str]]:
         return self._headers
 
-    def get_base_url(self) -> str:
-        return self._base_url
+    def get_environment(self) -> ExpressionMeasurementClientEnvironment:
+        return self._environment
 
     def get_timeout(self) -> typing.Optional[float]:
         return self._timeout
@@ -68,7 +69,7 @@ class SyncClientWrapper(BaseClientWrapper):
         *,
         api_key: str,
         headers: typing.Optional[typing.Dict[str, str]] = None,
-        base_url: str,
+        environment: ExpressionMeasurementClientEnvironment,
         timeout: typing.Optional[float] = None,
         max_retries: int = 2,
         stream_reconnection_enabled: typing.Optional[bool] = None,
@@ -79,7 +80,7 @@ class SyncClientWrapper(BaseClientWrapper):
         super().__init__(
             api_key=api_key,
             headers=headers,
-            base_url=base_url,
+            environment=environment,
             timeout=timeout,
             max_retries=max_retries,
             stream_reconnection_enabled=stream_reconnection_enabled,
@@ -90,7 +91,6 @@ class SyncClientWrapper(BaseClientWrapper):
             httpx_client=httpx_client,
             base_headers=self.get_headers,
             base_timeout=self.get_timeout,
-            base_url=self.get_base_url,
             base_max_retries=self.get_max_retries(),
             logging_config=self._logging,
         )
@@ -102,7 +102,7 @@ class AsyncClientWrapper(BaseClientWrapper):
         *,
         api_key: str,
         headers: typing.Optional[typing.Dict[str, str]] = None,
-        base_url: str,
+        environment: ExpressionMeasurementClientEnvironment,
         timeout: typing.Optional[float] = None,
         max_retries: int = 2,
         stream_reconnection_enabled: typing.Optional[bool] = None,
@@ -114,7 +114,7 @@ class AsyncClientWrapper(BaseClientWrapper):
         super().__init__(
             api_key=api_key,
             headers=headers,
-            base_url=base_url,
+            environment=environment,
             timeout=timeout,
             max_retries=max_retries,
             stream_reconnection_enabled=stream_reconnection_enabled,
@@ -126,7 +126,6 @@ class AsyncClientWrapper(BaseClientWrapper):
             httpx_client=httpx_client,
             base_headers=self.get_headers,
             base_timeout=self.get_timeout,
-            base_url=self.get_base_url,
             base_max_retries=self.get_max_retries(),
             async_base_headers=self.async_get_headers,
             logging_config=self._logging,
