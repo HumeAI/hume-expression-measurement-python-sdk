@@ -560,7 +560,7 @@ client.runs.list_events(
 </dl>
 </details>
 
-<details><summary><code>client.runs.<a href="src/hume_expression_measurement/runs/client.py">get_results</a>(...) -> str</code></summary>
+<details><summary><code>client.runs.<a href="src/hume_expression_measurement/runs/client.py">get_results</a>(...) -> typing.Iterator[bytes]</code></summary>
 <dl>
 <dd>
 
