@@ -134,7 +134,7 @@ class RunsClient:
 
     def delete(self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None) -> None:
         """
-        Removes the run and everything stored for it: its results, its event log and its media. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
+        Removes the run and everything stored for it, including its event log. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
 
         Parameters
         ----------
@@ -207,41 +207,6 @@ class RunsClient:
             run_id, page_size=page_size, cursor=cursor, request_options=request_options
         )
         return _response.data
-
-    def get_results(
-        self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None
-    ) -> typing.Iterator[typing.Dict[str, typing.Any]]:
-        """
-        The results the run produced, as newline-delimited JSON rather than a JSON array. The first line identifies the run, as `{"type": "voice.realtime"}`, `{"type": "face.file"}` and so on; every line after it is a `measurement.result` as the run delivered it, and a voice run also carries its `utterance.end` events. The lines are the realtime API's `measurement.result` and `utterance.end` messages: for a realtime run they are the messages the session sent, and for a file run they are the response's elements with `type` added. If the stored results are missing a piece from their start or middle, the request fails with `internal_error` before any of the body is sent. Results missing from the end cannot be detected, so the body ends early instead, as described for `200`. If a stored part cannot be read once the body has started, the response ends short of the length its `Content-Length` header declares; treat a body shorter than that as a failed request.
-
-        Parameters
-        ----------
-        run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
-
-        request_options : typing.Optional[RequestOptions]
-            Request-specific configuration.
-
-        Yields
-        ------
-        typing.Iterator[typing.Dict[str, typing.Any]]
-            One JSON object per line. The first line identifies the run, so a run with no stored results has an empty body and no first line. Results are stored as a run produces them, but storage never delays a measurement, so the stored results can be empty or end early even when the run produced more. A run still in progress returns the results stored so far.
-
-        Examples
-        --------
-        from hume_expression_measurement import ExpressionMeasurementClient
-
-        client = ExpressionMeasurementClient(
-            api_key="YOUR_API_KEY",
-        )
-        response = client.runs.get_results(
-            run_id="01926f3c-d33c-7c9f-9c91-4502d80834d5",
-        )
-        for chunk in response:
-            yield chunk
-        """
-        with self._raw_client.get_results(run_id, request_options=request_options) as r:
-            yield from r.data
 
 
 class AsyncRunsClient:
@@ -380,7 +345,7 @@ class AsyncRunsClient:
 
     async def delete(self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None) -> None:
         """
-        Removes the run and everything stored for it: its results, its event log and its media. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
+        Removes the run and everything stored for it, including its event log. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
 
         Parameters
         ----------
@@ -469,47 +434,3 @@ class AsyncRunsClient:
             run_id, page_size=page_size, cursor=cursor, request_options=request_options
         )
         return _response.data
-
-    async def get_results(
-        self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None
-    ) -> typing.AsyncIterator[typing.Dict[str, typing.Any]]:
-        """
-        The results the run produced, as newline-delimited JSON rather than a JSON array. The first line identifies the run, as `{"type": "voice.realtime"}`, `{"type": "face.file"}` and so on; every line after it is a `measurement.result` as the run delivered it, and a voice run also carries its `utterance.end` events. The lines are the realtime API's `measurement.result` and `utterance.end` messages: for a realtime run they are the messages the session sent, and for a file run they are the response's elements with `type` added. If the stored results are missing a piece from their start or middle, the request fails with `internal_error` before any of the body is sent. Results missing from the end cannot be detected, so the body ends early instead, as described for `200`. If a stored part cannot be read once the body has started, the response ends short of the length its `Content-Length` header declares; treat a body shorter than that as a failed request.
-
-        Parameters
-        ----------
-        run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
-
-        request_options : typing.Optional[RequestOptions]
-            Request-specific configuration.
-
-        Yields
-        ------
-        typing.AsyncIterator[typing.Dict[str, typing.Any]]
-            One JSON object per line. The first line identifies the run, so a run with no stored results has an empty body and no first line. Results are stored as a run produces them, but storage never delays a measurement, so the stored results can be empty or end early even when the run produced more. A run still in progress returns the results stored so far.
-
-        Examples
-        --------
-        import asyncio
-
-        from hume_expression_measurement import AsyncExpressionMeasurementClient
-
-        client = AsyncExpressionMeasurementClient(
-            api_key="YOUR_API_KEY",
-        )
-
-
-        async def main() -> None:
-            response = client.runs.get_results(
-                run_id="01926f3c-d33c-7c9f-9c91-4502d80834d5",
-            )
-            async for chunk in response:
-                yield chunk
-
-
-        asyncio.run(main())
-        """
-        async with self._raw_client.get_results(run_id, request_options=request_options) as r:
-            async for _chunk in r.data:
-                yield _chunk

@@ -410,7 +410,7 @@ client.runs.get(
 <dl>
 <dd>
 
-Removes the run and everything stored for it: its results, its event log and its media. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
+Removes the run and everything stored for it, including its event log. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
 </dd>
 </dl>
 </dd>
@@ -541,79 +541,6 @@ client.runs.list_events(
 <dd>
 
 **cursor:** `typing.Optional[str]` — The `next_cursor` of the previous page. Pass it back unchanged.
-    
-</dd>
-</dl>
-
-<dl>
-<dd>
-
-**request_options:** `typing.Optional[RequestOptions]` — Request-specific configuration.
-    
-</dd>
-</dl>
-</dd>
-</dl>
-
-
-</dd>
-</dl>
-</details>
-
-<details><summary><code>client.runs.<a href="src/hume_expression_measurement/runs/client.py">get_results</a>(...) -> typing.Iterator[bytes]</code></summary>
-<dl>
-<dd>
-
-#### 📝 Description
-
-<dl>
-<dd>
-
-<dl>
-<dd>
-
-The results the run produced, as newline-delimited JSON rather than a JSON array. The first line identifies the run, as `{"type": "voice.realtime"}`, `{"type": "face.file"}` and so on; every line after it is a `measurement.result` as the run delivered it, and a voice run also carries its `utterance.end` events. The lines are the realtime API's `measurement.result` and `utterance.end` messages: for a realtime run they are the messages the session sent, and for a file run they are the response's elements with `type` added. If the stored results are missing a piece from their start or middle, the request fails with `internal_error` before any of the body is sent. Results missing from the end cannot be detected, so the body ends early instead, as described for `200`. If a stored part cannot be read once the body has started, the response ends short of the length its `Content-Length` header declares; treat a body shorter than that as a failed request.
-</dd>
-</dl>
-</dd>
-</dl>
-
-#### 🔌 Usage
-
-<dl>
-<dd>
-
-<dl>
-<dd>
-
-```python
-from hume_expression_measurement import ExpressionMeasurementClient
-from hume_expression_measurement.environment import ExpressionMeasurementClientEnvironment
-
-client = ExpressionMeasurementClient(
-    api_key="<value>",
-    environment=ExpressionMeasurementClientEnvironment.PRODUCTION,
-)
-
-client.runs.get_results(
-    run_id="01926f3c-d33c-7c9f-9c91-4502d80834d5",
-)
-
-```
-</dd>
-</dl>
-</dd>
-</dl>
-
-#### ⚙️ Parameters
-
-<dl>
-<dd>
-
-<dl>
-<dd>
-
-**run_id:** `str` — The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
     
 </dd>
 </dl>
