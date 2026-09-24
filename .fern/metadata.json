@@ -1,5 +1,5 @@
 {
-  "cliVersion": "5.131.2",
+  "cliVersion": "5.135.1",
   "generatorName": "fernapi/fern-python-sdk",
   "generatorVersion": "5.31.2",
   "generatorConfig": {
@@ -9,9 +9,9 @@
       "class_name": "ExpressionMeasurementClient"
     }
   },
-  "originGitCommit": "b2cce8bc80f9260fecf76e2371f1bfe707f591e6",
+  "originGitCommit": "fa966bdc8b618cea0d8fa323419d656669e17b69",
   "originGitCommitIsDirty": false,
   "invokedBy": "ci",
   "ciProvider": "github",
-  "sdkVersion": "0.0.101"
+  "sdkVersion": "0.0.102"
 }

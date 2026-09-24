@@ -15,7 +15,7 @@ class FaceDescriptionScore(UniversalBaseModel):
     name: FaceDescriptionName
     probability: float = pydantic.Field()
     """
-    The strength of the action, rounded to four decimal places. Not a calibrated probability: compare description scores with each other rather than with expression scores.
+    The probability that this action is present, rounded to four decimal places.
     """
 
     if IS_PYDANTIC_V2:

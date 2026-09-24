@@ -56,6 +56,11 @@ class RunSummary(UniversalBaseModel):
     How far the server got in storing the run's media, in bytes. Media that could not be stored is included, so this can exceed what was kept. Null when the run's media was not being stored.
     """
 
+    metered_seconds: float = pydantic.Field()
+    """
+    Billable seconds for the run. For voice, this is the duration of the audio the server accepted. For face, each accepted frame or image counts as one third of a second, regardless of frame rate. Updated while a realtime run is in progress.
+    """
+
     if IS_PYDANTIC_V2:
         model_config: typing.ClassVar[pydantic.ConfigDict] = pydantic.ConfigDict(extra="allow", frozen=True)  # type: ignore # Pydantic v2
     else:
