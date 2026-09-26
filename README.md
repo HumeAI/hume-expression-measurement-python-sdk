@@ -62,7 +62,7 @@ for measurement in response.measurements:
     print(f"utterance {measurement.utterance_id}, {measurement.audio_start_ms} to {measurement.audio_end_ms} ms: {top}")
 ```
 
-The tuple gives the part a filename and a content type. `application/octet-stream` labels the file as headerless samples; to upload a WAV file, pass `audio/wav`. The response lists every utterance in `utterances` and every measurement in `measurements`, each with the `utterance_id` it belongs to. A request holds up to 25,000,000 bytes, a little over 13 minutes of audio. The [voice upload guide](https://dev.hume.ai/docs/expression-measurement/voice/upload) covers the request, the response, and every error.
+The tuple gives the part a filename and a content type. `application/octet-stream` labels the file as headerless samples; to upload a WAV file, pass `audio/wav`. The response lists every utterance in `utterances` and every measurement in `measurements`, each with the `utterance_id` it belongs to. A request holds up to 25MB, a little over 13 minutes of audio. The [voice upload guide](https://dev.hume.ai/docs/expression-measurement/voice/upload) covers the request, the response, and every error.
 
 ### Face
 
@@ -192,7 +192,7 @@ asyncio.run(main())
 
 ## Scores
 
-Every measurement is a list of scores, each pairing a `name` with a `probability` from 0 to 1. A probability reflects how likely other people would be to perceive that expression, not what the person feels. Only scores above 0.1 are returned, sorted by descending probability, so arrays vary in length and may be empty. Voice results carry `expressions` and `voice_attributes`. Face results carry `expressions` and `descriptions` for each face. [Scores](https://dev.hume.ai/docs/expression-measurement/scores) explains how to read them.
+Every measurement is a list of scores, each pairing a `name` with a `probability` from 0 to 1 that the expression is present. Scores are sorted by descending probability, and only scores that pass a threshold are returned, so arrays vary in length and may be empty. Voice results carry `expressions`, each kept against a threshold set for that expression, and `voice_attributes`, kept at 0.85 or above. Face results carry `expressions` and `descriptions` for each face, both kept above 0.1. [Scores](https://dev.hume.ai/docs/expression-measurement/scores) explains how to read them.
 
 ## Configuration
 
@@ -231,7 +231,7 @@ socket.send_face_session_update(
 
 ## Runs
 
-Every upload request that is measured and every realtime session is recorded as a run. A run's ID is the `request_id` of an upload response or the `session_id` of a session. The run endpoints return a run's status, configuration, and event log. They do not return measurements, so keep the results you need from the upload response or the session.
+Every upload request that is measured and every realtime session is recorded as a run. A run's ID is the `run_id` of an upload response or the `session_id` of a session. The run endpoints return a run's status, configuration, and event log. They do not return measurements, so keep the results you need from the upload response or the session.
 
 ```python
 from hume_expression_measurement import ExpressionMeasurementClient
@@ -250,7 +250,7 @@ for event in events.events:
     print(event.seq, event.kind)
 ```
 
-`runs.list` and `runs.list_events` return one page at a time. Pass a page's `next_cursor` back as `cursor` to fetch the next one; the last page has none. `runs.delete(run_id)` permanently removes a run and everything stored for it. The [runs guide](https://dev.hume.ai/docs/expression-measurement/runs) covers filters, run status, and every event kind.
+`runs.list` and `runs.list_events` return one page at a time. Pass a page's `next_cursor` back as `cursor` to fetch the next one; the last page has none. The [runs guide](https://dev.hume.ai/docs/expression-measurement/runs) covers filters, run status, and every event kind.
 
 ## Errors
 
@@ -265,7 +265,7 @@ except ApiError as error:
     print(f"{error.status_code}: {error.body}")
 ```
 
-Problems during a session arrive as `error` messages rather than exceptions. A rejected frame, such as `invalid_audio_frame`, `invalid_image_frame`, or `rate_limited`, is discarded and the session continues. `config_invalid`, `message_too_large`, and a voice `internal_error` end the session, and `session.closed` follows with `reason` set to `error`. `connect()` raises `ApiError` when the WebSocket handshake fails. A status code of 401 means the API key was rejected.
+Problems during a session arrive as `error` messages rather than exceptions. A rejected frame, such as `invalid_audio_frame`, `invalid_image_frame`, or `rate_limited`, is discarded and the session continues. `config_invalid`, `message_too_large`, a voice `internal_error`, and five consecutive face `internal_error` messages end the session, and `session.closed` follows with `reason` set to `error`. `connect()` raises `ApiError` when the WebSocket handshake fails. A status code of 401 means the API key was rejected.
 
 [Errors](https://dev.hume.ai/docs/expression-measurement/errors) lists every code and whether to retry.
 
