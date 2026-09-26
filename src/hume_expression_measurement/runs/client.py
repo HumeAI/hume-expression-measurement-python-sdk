@@ -141,7 +141,7 @@ class RunsClient:
         request_options: typing.Optional[RequestOptions] = None,
     ) -> RunEventsPage:
         """
-        The problems the run reported, in order: frames it rejected and failures it hit. A run that went well has none, and only realtime sessions record any.
+        The problems the run reported, in order: frames it rejected and failures it hit. A run that went well has none. Only realtime sessions record them, except `video_recording_abandoned`, which a face file run can also record.
 
         Parameters
         ----------
@@ -322,7 +322,7 @@ class AsyncRunsClient:
         request_options: typing.Optional[RequestOptions] = None,
     ) -> RunEventsPage:
         """
-        The problems the run reported, in order: frames it rejected and failures it hit. A run that went well has none, and only realtime sessions record any.
+        The problems the run reported, in order: frames it rejected and failures it hit. A run that went well has none. Only realtime sessions record them, except `video_recording_abandoned`, which a face file run can also record.
 
         Parameters
         ----------

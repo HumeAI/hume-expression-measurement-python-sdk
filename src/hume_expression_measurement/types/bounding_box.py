@@ -4,5 +4,5 @@ import typing
 
 BoundingBox = typing.List[float]
 """
-The location of the face in the submitted image, as `[x0, y0, x1, y1]`: the top-left and bottom-right corners in pixels, with the origin at the top-left of the image.
+The location of the face in the submitted image, as `[x0, y0, x1, y1]`: the top-left and bottom-right corners in pixels, with the origin at the top-left of the image. Coordinates are in the pixels as stored in the file: EXIF orientation is not applied.
 """
