@@ -13,7 +13,7 @@ class FaceConfig(UniversalBaseModel):
 
     threshold: float = pydantic.Field()
     """
-    Minimum detection confidence for a face to be measured. Lower values include more faces at the risk of false detections. This scale is specific to this API; thresholds tuned for other face detection APIs do not carry over.
+    Minimum detection confidence for a face to be measured. Lower values include more faces at the risk of false detections. This scale is specific to this API; thresholds tuned for other face detection APIs do not carry over. Reported rounded to four decimal places.
     """
 
     min_size: int = pydantic.Field()

@@ -15,7 +15,7 @@ class RunEvent(UniversalBaseModel):
 
     seq: int = pydantic.Field()
     """
-    The entry's position in the log, counting from 1.
+    The entry's position in the log.
     """
 
     at: dt.datetime = pydantic.Field()

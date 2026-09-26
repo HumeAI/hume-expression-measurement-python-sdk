@@ -44,17 +44,17 @@ class Run(UniversalBaseModel):
 
     ended_at: typing.Optional[dt.datetime] = pydantic.Field(default=None)
     """
-    When the run ended. Null while it is in progress.
+    When the run ended. Null while it is in progress. For a run reported `errored` because the server stopped hearing from it, the last time the server heard from it.
     """
 
     close_code: typing.Optional[int] = pydantic.Field(default=None)
     """
-    The WebSocket close code the session ended with, or 1011 if the connection was lost without a close frame. Only realtime runs that have ended have one.
+    The WebSocket close code the session ended with, or 1011 if the connection was lost without a close frame. Only realtime runs that have ended have one, and not all of those: it is absent when the client's close frame carried no code, or when the server stopped before recording how the session closed.
     """
 
     close_reason: typing.Optional[str] = pydantic.Field(default=None)
     """
-    Why the session closed: `client_request`, `server_shutdown`, `idle_timeout` or `error` when the server closed it, `error` when the connection was lost without a close frame, and otherwise the reason text from the client's close frame. Only realtime runs that have ended have one.
+    Why the session closed: `client_request`, `server_shutdown`, `idle_timeout` or `error` when the server closed it, `error` when the connection was lost without a close frame, and otherwise the reason text from the client's close frame. Only realtime runs that have ended have one, and not all of those: it is absent when the client's close frame carried no code, or when the server stopped before recording how the session closed.
     """
 
     bytes_received: typing.Optional[int] = pydantic.Field(default=None)
@@ -64,7 +64,7 @@ class Run(UniversalBaseModel):
 
     bytes_recorded: typing.Optional[int] = pydantic.Field(default=None)
     """
-    How far the server got in storing the run's media, in bytes. Media that could not be stored is included, so this can exceed what was kept. Null when the run's media was not being stored.
+    How far the server got in storing the run's media, in bytes. Media that could not be stored is included, so this can exceed what was kept. Null when the run's media was not being stored, or when the server has not reported how much it stored, as early in a live run.
     """
 
     metered_seconds: float = pydantic.Field()

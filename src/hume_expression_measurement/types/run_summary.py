@@ -43,7 +43,7 @@ class RunSummary(UniversalBaseModel):
 
     ended_at: typing.Optional[dt.datetime] = pydantic.Field(default=None)
     """
-    When the run ended. Null while it is in progress.
+    When the run ended. Null while it is in progress. For a run reported `errored` because the server stopped hearing from it, the last time the server heard from it.
     """
 
     bytes_received: typing.Optional[int] = pydantic.Field(default=None)
@@ -53,7 +53,7 @@ class RunSummary(UniversalBaseModel):
 
     bytes_recorded: typing.Optional[int] = pydantic.Field(default=None)
     """
-    How far the server got in storing the run's media, in bytes. Media that could not be stored is included, so this can exceed what was kept. Null when the run's media was not being stored.
+    How far the server got in storing the run's media, in bytes. Media that could not be stored is included, so this can exceed what was kept. Null when the run's media was not being stored, or when the server has not reported how much it stored, as early in a live run.
     """
 
     metered_seconds: float = pydantic.Field()
