@@ -63,13 +63,13 @@ class RunsClient:
             Only runs that reached the API this way.
 
         endpoint : typing.Optional[RunEndpoint]
-            Only runs measured by this pipeline.
+            Only runs that measured this kind of media.
 
         started_before : typing.Optional[dt.datetime]
             Only runs that started before this time, in RFC 3339 format.
 
         started_after : typing.Optional[dt.datetime]
-            Only runs that started at or after this time, in RFC 3339 format. Consecutive windows that share a boundary neither skip a run nor return one twice.
+            Only runs that started at or after this time, in RFC 3339 format. Consecutive time ranges that share a boundary neither skip a run nor return one twice.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -108,7 +108,7 @@ class RunsClient:
         Parameters
         ----------
         run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
+            The run's ID: the `session_id` of a realtime session or the `run_id` of a file response.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -132,36 +132,6 @@ class RunsClient:
         _response = self._raw_client.get(run_id, request_options=request_options)
         return _response.data
 
-    def delete(self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None) -> None:
-        """
-        Removes the run and everything stored for it, including its event log. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
-
-        Parameters
-        ----------
-        run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
-
-        request_options : typing.Optional[RequestOptions]
-            Request-specific configuration.
-
-        Returns
-        -------
-        None
-
-        Examples
-        --------
-        from hume_expression_measurement import ExpressionMeasurementClient
-
-        client = ExpressionMeasurementClient(
-            api_key="YOUR_API_KEY",
-        )
-        client.runs.delete(
-            run_id="01926f3a-5b1c-7d2e-8f40-3a9b7c1d2e5f",
-        )
-        """
-        _response = self._raw_client.delete(run_id, request_options=request_options)
-        return _response.data
-
     def list_events(
         self,
         run_id: str,
@@ -176,7 +146,7 @@ class RunsClient:
         Parameters
         ----------
         run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
+            The run's ID: the `session_id` of a realtime session or the `run_id` of a file response.
 
         page_size : typing.Optional[int]
             How many entries to return.
@@ -200,7 +170,7 @@ class RunsClient:
             api_key="YOUR_API_KEY",
         )
         client.runs.list_events(
-            run_id="01926f3a-5b1c-7d2e-8f40-3a9b7c1d2e5f",
+            run_id="01926f2c-6d92-7a41-9d26-5e8b0c3f71a9",
         )
         """
         _response = self._raw_client.list_events(
@@ -258,13 +228,13 @@ class AsyncRunsClient:
             Only runs that reached the API this way.
 
         endpoint : typing.Optional[RunEndpoint]
-            Only runs measured by this pipeline.
+            Only runs that measured this kind of media.
 
         started_before : typing.Optional[dt.datetime]
             Only runs that started before this time, in RFC 3339 format.
 
         started_after : typing.Optional[dt.datetime]
-            Only runs that started at or after this time, in RFC 3339 format. Consecutive windows that share a boundary neither skip a run nor return one twice.
+            Only runs that started at or after this time, in RFC 3339 format. Consecutive time ranges that share a boundary neither skip a run nor return one twice.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -311,7 +281,7 @@ class AsyncRunsClient:
         Parameters
         ----------
         run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
+            The run's ID: the `session_id` of a realtime session or the `run_id` of a file response.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -343,44 +313,6 @@ class AsyncRunsClient:
         _response = await self._raw_client.get(run_id, request_options=request_options)
         return _response.data
 
-    async def delete(self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None) -> None:
-        """
-        Removes the run and everything stored for it, including its event log. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
-
-        Parameters
-        ----------
-        run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
-
-        request_options : typing.Optional[RequestOptions]
-            Request-specific configuration.
-
-        Returns
-        -------
-        None
-
-        Examples
-        --------
-        import asyncio
-
-        from hume_expression_measurement import AsyncExpressionMeasurementClient
-
-        client = AsyncExpressionMeasurementClient(
-            api_key="YOUR_API_KEY",
-        )
-
-
-        async def main() -> None:
-            await client.runs.delete(
-                run_id="01926f3a-5b1c-7d2e-8f40-3a9b7c1d2e5f",
-            )
-
-
-        asyncio.run(main())
-        """
-        _response = await self._raw_client.delete(run_id, request_options=request_options)
-        return _response.data
-
     async def list_events(
         self,
         run_id: str,
@@ -395,7 +327,7 @@ class AsyncRunsClient:
         Parameters
         ----------
         run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
+            The run's ID: the `session_id` of a realtime session or the `run_id` of a file response.
 
         page_size : typing.Optional[int]
             How many entries to return.
@@ -424,7 +356,7 @@ class AsyncRunsClient:
 
         async def main() -> None:
             await client.runs.list_events(
-                run_id="01926f3a-5b1c-7d2e-8f40-3a9b7c1d2e5f",
+                run_id="01926f2c-6d92-7a41-9d26-5e8b0c3f71a9",
             )
 
 

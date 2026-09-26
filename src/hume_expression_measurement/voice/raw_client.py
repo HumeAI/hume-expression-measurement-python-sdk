@@ -20,7 +20,9 @@ from ..core.request_options import RequestOptions
 from ..core.websocket_compat import InvalidWebSocketStatus, get_status_code
 from ..errors.bad_request_error import BadRequestError
 from ..errors.content_too_large_error import ContentTooLargeError
+from ..errors.forbidden_error import ForbiddenError
 from ..errors.internal_server_error import InternalServerError
+from ..errors.method_not_allowed_error import MethodNotAllowedError
 from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
 from ..errors.unsupported_media_type_error import UnsupportedMediaTypeError
@@ -66,10 +68,10 @@ class RawVoiceClient:
 
         | Limit | Value |
         |---|---|
-        | Request size | 25,000,000 bytes, the whole multipart body |
+        | Request size | 25MB, the whole multipart body |
         | Audio format | 16-bit PCM, 16 kHz, mono, as a WAV file or headerless samples |
 
-        A request over the size limit is rejected with `audio_too_large`. Audio in another container, such as MP3 or FLAC, is rejected with `unsupported_media_type`; convert it before sending. A WAV file at another sample rate, channel count or sample format is rejected with `audio_decode_failed` rather than converted.
+        A request over the size limit is rejected with `audio_too_long`. Audio in another container, such as MP3 or FLAC, is rejected with `unsupported_media_type`; convert it before sending. A WAV file at another sample rate, channel count or sample format is rejected with `audio_decode_failed` rather than converted.
 
         Parameters
         ----------
@@ -92,12 +94,12 @@ class RawVoiceClient:
             method="POST",
             data={},
             files={
-                "file": core.with_content_type(file=file, default_content_type="audio/wav"),
                 **(
                     {"config": (None, json.dumps(jsonable_encoder(config)), "application/json")}
                     if config is not OMIT
                     else {}
                 ),
+                "file": core.with_content_type(file=file, default_content_type="audio/wav"),
             },
             request_options=request_options,
             omit=OMIT,
@@ -131,6 +133,28 @@ class RawVoiceClient:
                         AuthenticationError,
                         parse_obj_as(
                             type_=AuthenticationError,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 403:
+                raise ForbiddenError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -217,12 +241,12 @@ class RawVoiceClient:
 
         | Limit | Value |
         |---|---|
-        | Audio per frame | 10 seconds (320,000 bytes) |
+        | Audio per frame | 10 seconds (320KB) |
         | Send rate | 30 seconds of audio immediately, then 2 seconds of audio per second |
 
         ## Message flow
 
-        The table shows a session at the default `measurement_timer_ms` of 3000, with one utterance in which speech begins 96 ms into the audio and is still in progress at 26000 ms, when `session.close` ends it.
+        The table shows a session at the default `measurement_timer_ms` of 3000, with one utterance in which speech begins 98 ms into the audio and is still in progress at 26000 ms, when `session.close` ends it.
 
         | Time in audio | Direction | Message |
         |---|---|---|
@@ -230,10 +254,10 @@ class RawVoiceClient:
         | before audio | send | `session.update` (if you change the configuration) |
         | before audio | receive | `session.updated` (if you sent `session.update`) |
         | 0 ms onward | send | audio frames |
-        | 96 ms | receive | `utterance.start` (utterance 0) |
-        | 3096 ms | receive | `measurement.result` (96 to 3096 ms, `interval`) |
-        | 6096 ms | receive | `measurement.result` (96 to 6096 ms, `interval`) |
-        | 9096 to 24096 ms | receive | `measurement.result` every 3000 ms of speech (six more, each covering at most the most recent 10 seconds) |
+        | 98 ms | receive | `utterance.start` (utterance 0) |
+        | 3098 ms | receive | `measurement.result` (98 to 3098 ms, `interval`) |
+        | 6098 ms | receive | `measurement.result` (98 to 6098 ms, `interval`) |
+        | 9098 to 24098 ms | receive | `measurement.result` every 3000 ms of speech (six more, each covering at most the most recent 10 seconds) |
         | 26000 ms | send | `session.close` |
         | 26000 ms | receive | `measurement.result` (16000 to 26000 ms, `speech_ended`) |
         | 26000 ms | receive | `utterance.end` (utterance 0) |
@@ -311,10 +335,10 @@ class AsyncRawVoiceClient:
 
         | Limit | Value |
         |---|---|
-        | Request size | 25,000,000 bytes, the whole multipart body |
+        | Request size | 25MB, the whole multipart body |
         | Audio format | 16-bit PCM, 16 kHz, mono, as a WAV file or headerless samples |
 
-        A request over the size limit is rejected with `audio_too_large`. Audio in another container, such as MP3 or FLAC, is rejected with `unsupported_media_type`; convert it before sending. A WAV file at another sample rate, channel count or sample format is rejected with `audio_decode_failed` rather than converted.
+        A request over the size limit is rejected with `audio_too_long`. Audio in another container, such as MP3 or FLAC, is rejected with `unsupported_media_type`; convert it before sending. A WAV file at another sample rate, channel count or sample format is rejected with `audio_decode_failed` rather than converted.
 
         Parameters
         ----------
@@ -337,12 +361,12 @@ class AsyncRawVoiceClient:
             method="POST",
             data={},
             files={
-                "file": core.with_content_type(file=file, default_content_type="audio/wav"),
                 **(
                     {"config": (None, json.dumps(jsonable_encoder(config)), "application/json")}
                     if config is not OMIT
                     else {}
                 ),
+                "file": core.with_content_type(file=file, default_content_type="audio/wav"),
             },
             request_options=request_options,
             omit=OMIT,
@@ -376,6 +400,28 @@ class AsyncRawVoiceClient:
                         AuthenticationError,
                         parse_obj_as(
                             type_=AuthenticationError,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 403:
+                raise ForbiddenError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -464,12 +510,12 @@ class AsyncRawVoiceClient:
 
         | Limit | Value |
         |---|---|
-        | Audio per frame | 10 seconds (320,000 bytes) |
+        | Audio per frame | 10 seconds (320KB) |
         | Send rate | 30 seconds of audio immediately, then 2 seconds of audio per second |
 
         ## Message flow
 
-        The table shows a session at the default `measurement_timer_ms` of 3000, with one utterance in which speech begins 96 ms into the audio and is still in progress at 26000 ms, when `session.close` ends it.
+        The table shows a session at the default `measurement_timer_ms` of 3000, with one utterance in which speech begins 98 ms into the audio and is still in progress at 26000 ms, when `session.close` ends it.
 
         | Time in audio | Direction | Message |
         |---|---|---|
@@ -477,10 +523,10 @@ class AsyncRawVoiceClient:
         | before audio | send | `session.update` (if you change the configuration) |
         | before audio | receive | `session.updated` (if you sent `session.update`) |
         | 0 ms onward | send | audio frames |
-        | 96 ms | receive | `utterance.start` (utterance 0) |
-        | 3096 ms | receive | `measurement.result` (96 to 3096 ms, `interval`) |
-        | 6096 ms | receive | `measurement.result` (96 to 6096 ms, `interval`) |
-        | 9096 to 24096 ms | receive | `measurement.result` every 3000 ms of speech (six more, each covering at most the most recent 10 seconds) |
+        | 98 ms | receive | `utterance.start` (utterance 0) |
+        | 3098 ms | receive | `measurement.result` (98 to 3098 ms, `interval`) |
+        | 6098 ms | receive | `measurement.result` (98 to 6098 ms, `interval`) |
+        | 9098 to 24098 ms | receive | `measurement.result` every 3000 ms of speech (six more, each covering at most the most recent 10 seconds) |
         | 26000 ms | send | `session.close` |
         | 26000 ms | receive | `measurement.result` (16000 to 26000 ms, `speech_ended`) |
         | 26000 ms | receive | `utterance.end` (utterance 0) |

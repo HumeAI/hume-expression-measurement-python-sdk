@@ -13,8 +13,8 @@ from ..core.parse_error import ParsingError
 from ..core.pydantic_utilities import parse_obj_as
 from ..core.request_options import RequestOptions
 from ..errors.bad_request_error import BadRequestError
-from ..errors.conflict_error import ConflictError
 from ..errors.internal_server_error import InternalServerError
+from ..errors.method_not_allowed_error import MethodNotAllowedError
 from ..errors.not_found_error import NotFoundError
 from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
@@ -67,13 +67,13 @@ class RawRunsClient:
             Only runs that reached the API this way.
 
         endpoint : typing.Optional[RunEndpoint]
-            Only runs measured by this pipeline.
+            Only runs that measured this kind of media.
 
         started_before : typing.Optional[dt.datetime]
             Only runs that started before this time, in RFC 3339 format.
 
         started_after : typing.Optional[dt.datetime]
-            Only runs that started at or after this time, in RFC 3339 format. Consecutive windows that share a boundary neither skip a run nor return one twice.
+            Only runs that started at or after this time, in RFC 3339 format. Consecutive time ranges that share a boundary neither skip a run nor return one twice.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -131,6 +131,17 @@ class RawRunsClient:
                         ),
                     ),
                 )
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
             if _response.status_code == 500:
                 raise InternalServerError(
                     headers=dict(_response.headers),
@@ -169,7 +180,7 @@ class RawRunsClient:
         Parameters
         ----------
         run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
+            The run's ID: the `session_id` of a realtime session or the `run_id` of a file response.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -217,86 +228,8 @@ class RawRunsClient:
                         ),
                     ),
                 )
-            if _response.status_code == 500:
-                raise InternalServerError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            _response_json = _response.json()
-        except JSONDecodeError:
-            raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response.text)
-        except ValidationError as e:
-            raise ParsingError(
-                status_code=_response.status_code, headers=dict(_response.headers), body=_response.json(), cause=e
-            )
-        raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response_json)
-
-    def delete(self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None) -> HttpResponse[None]:
-        """
-        Removes the run and everything stored for it, including its event log. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
-
-        Parameters
-        ----------
-        run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
-
-        request_options : typing.Optional[RequestOptions]
-            Request-specific configuration.
-
-        Returns
-        -------
-        HttpResponse[None]
-        """
-        _response = self._client_wrapper.httpx_client.request(
-            f"v1/expression/run/{encode_path_param(run_id)}",
-            base_url=self._client_wrapper.get_environment().base,
-            method="DELETE",
-            request_options=request_options,
-        )
-        try:
-            if 200 <= _response.status_code < 300:
-                return HttpResponse(response=_response, data=None)
-            if _response.status_code == 401:
-                raise UnauthorizedError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        AuthenticationError,
-                        parse_obj_as(
-                            type_=AuthenticationError,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 404:
-                raise NotFoundError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 409:
-                raise ConflictError(
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
                         ErrorBody,
@@ -351,7 +284,7 @@ class RawRunsClient:
         Parameters
         ----------
         run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
+            The run's ID: the `session_id` of a realtime session or the `run_id` of a file response.
 
         page_size : typing.Optional[int]
             How many entries to return.
@@ -411,6 +344,17 @@ class RawRunsClient:
                 )
             if _response.status_code == 404:
                 raise NotFoundError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
                         ErrorBody,
@@ -490,13 +434,13 @@ class AsyncRawRunsClient:
             Only runs that reached the API this way.
 
         endpoint : typing.Optional[RunEndpoint]
-            Only runs measured by this pipeline.
+            Only runs that measured this kind of media.
 
         started_before : typing.Optional[dt.datetime]
             Only runs that started before this time, in RFC 3339 format.
 
         started_after : typing.Optional[dt.datetime]
-            Only runs that started at or after this time, in RFC 3339 format. Consecutive windows that share a boundary neither skip a run nor return one twice.
+            Only runs that started at or after this time, in RFC 3339 format. Consecutive time ranges that share a boundary neither skip a run nor return one twice.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -554,6 +498,17 @@ class AsyncRawRunsClient:
                         ),
                     ),
                 )
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
             if _response.status_code == 500:
                 raise InternalServerError(
                     headers=dict(_response.headers),
@@ -594,7 +549,7 @@ class AsyncRawRunsClient:
         Parameters
         ----------
         run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
+            The run's ID: the `session_id` of a realtime session or the `run_id` of a file response.
 
         request_options : typing.Optional[RequestOptions]
             Request-specific configuration.
@@ -642,88 +597,8 @@ class AsyncRawRunsClient:
                         ),
                     ),
                 )
-            if _response.status_code == 500:
-                raise InternalServerError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            _response_json = _response.json()
-        except JSONDecodeError:
-            raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response.text)
-        except ValidationError as e:
-            raise ParsingError(
-                status_code=_response.status_code, headers=dict(_response.headers), body=_response.json(), cause=e
-            )
-        raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response_json)
-
-    async def delete(
-        self, run_id: str, *, request_options: typing.Optional[RequestOptions] = None
-    ) -> AsyncHttpResponse[None]:
-        """
-        Removes the run and everything stored for it, including its event log. The deletion is permanent. A run that is still in progress cannot be deleted; a run whose connection was lost becomes deletable five minutes after the server last heard from it. A run that has already been deleted answers `404`.
-
-        Parameters
-        ----------
-        run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
-
-        request_options : typing.Optional[RequestOptions]
-            Request-specific configuration.
-
-        Returns
-        -------
-        AsyncHttpResponse[None]
-        """
-        _response = await self._client_wrapper.httpx_client.request(
-            f"v1/expression/run/{encode_path_param(run_id)}",
-            base_url=self._client_wrapper.get_environment().base,
-            method="DELETE",
-            request_options=request_options,
-        )
-        try:
-            if 200 <= _response.status_code < 300:
-                return AsyncHttpResponse(response=_response, data=None)
-            if _response.status_code == 401:
-                raise UnauthorizedError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        AuthenticationError,
-                        parse_obj_as(
-                            type_=AuthenticationError,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 404:
-                raise NotFoundError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 409:
-                raise ConflictError(
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
                         ErrorBody,
@@ -778,7 +653,7 @@ class AsyncRawRunsClient:
         Parameters
         ----------
         run_id : str
-            The run's ID: the `session_id` of a realtime session or the `request_id` of a file request.
+            The run's ID: the `session_id` of a realtime session or the `run_id` of a file response.
 
         page_size : typing.Optional[int]
             How many entries to return.
@@ -838,6 +713,17 @@ class AsyncRawRunsClient:
                 )
             if _response.status_code == 404:
                 raise NotFoundError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
                     headers=dict(_response.headers),
                     body=typing.cast(
                         ErrorBody,

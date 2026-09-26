@@ -26,7 +26,7 @@ class RunEvent(UniversalBaseModel):
     kind: RunEventKind
     detail: typing.Optional[typing.Dict[str, typing.Any]] = pydantic.Field(default=None)
     """
-    Details, depending on `kind`: the reason a frame was rejected (`detail`), the size limit a message exceeded (`limit_bytes`), whether a measurement failure was transient and how many failed in a row (`retryable`, `consecutive`), or why recording stopped (`reason`). Absent for `rate_limited` and `overloaded`.
+    Details, depending on `kind`: the reason a frame was rejected (`detail`), the size limit a message exceeded (`limit_bytes`), whether a measurement failure was temporary and how many failed in a row (`retryable`, `consecutive`), or why recording stopped (`reason`). Absent for `rate_limited` and `overloaded`.
     """
 
     if IS_PYDANTIC_V2:

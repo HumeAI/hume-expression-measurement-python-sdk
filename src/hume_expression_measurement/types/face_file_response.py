@@ -15,7 +15,12 @@ class FaceFileResponse(UniversalBaseModel):
 
     request_id: str = pydantic.Field()
     """
-    Identifies this request in Hume's records, and the run it was recorded as.
+    Identifies this request in Hume's records. Quote it when contacting support.
+    """
+
+    run_id: str = pydantic.Field()
+    """
+    Identifies the run this request was recorded as. Pass it to the run endpoints to look the run up.
     """
 
     received: FaceFileResponseReceived = pydantic.Field()
@@ -30,7 +35,7 @@ class FaceFileResponse(UniversalBaseModel):
 
     face_state: typing.Optional[str] = pydantic.Field(default=None)
     """
-    Present when `return_face_state` was set: pass it as `face_state` in a later request, within 24 hours, to continue `face_id` numbering. Treat it as opaque.
+    Present when `return_face_state` was set. Pass it unchanged as `face_state` in a later request, within 24 hours, to continue `face_id` numbering.
     """
 
     if IS_PYDANTIC_V2:

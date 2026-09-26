@@ -2,5 +2,5 @@
 
 FaceDescriptionName = str
 """
-The name of a visible facial action the face endpoint can detect; see the [full list of face descriptions](/docs/expression-measurement/face/measurements#descriptions). Names are lowercase and may contain spaces and punctuation. New names may be added over time; treat a name you do not recognize as a new prediction.
+The name of a visible facial action; see the [full list of face descriptions](/docs/expression-measurement/face/measurements#descriptions). Names are lowercase and may contain spaces and punctuation. New names may be added over time; treat a name you do not recognize as a new prediction.
 """

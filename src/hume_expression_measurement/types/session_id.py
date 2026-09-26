@@ -2,5 +2,5 @@
 
 SessionId = str
 """
-Unique identifier for the session. Include it when contacting support about a session.
+Unique identifier for the session. It is also the `run_id` of the run the session is recorded as. Include it when contacting support about a session.
 """

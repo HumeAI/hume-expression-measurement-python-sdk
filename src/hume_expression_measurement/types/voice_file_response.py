@@ -16,7 +16,12 @@ class VoiceFileResponse(UniversalBaseModel):
 
     request_id: str = pydantic.Field()
     """
-    Identifies this request in Hume's records, and the run it was recorded as.
+    Identifies this request in Hume's records. Quote it when contacting support.
+    """
+
+    run_id: str = pydantic.Field()
+    """
+    Identifies the run this request was recorded as. Pass it to the run endpoints to look the run up.
     """
 
     received: VoiceFileResponseReceived = pydantic.Field()

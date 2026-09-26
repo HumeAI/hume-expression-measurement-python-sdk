@@ -2,5 +2,5 @@
 
 VoiceExpressionName = str
 """
-The name of an expression the voice endpoint can detect in speech; see the [full list of voice expressions](/docs/expression-measurement/voice/measurements#expressions). Names are lowercase and may contain spaces and punctuation. New names may be added over time; treat a name you do not recognize as a new prediction.
+The name of an expression that can be detected in speech; see the [full list of voice expressions](/docs/expression-measurement/voice/measurements#expressions). Names are lowercase and may contain spaces and punctuation. New names may be added over time; treat a name you do not recognize as a new prediction.
 """

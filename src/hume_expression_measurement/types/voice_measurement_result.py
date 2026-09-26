@@ -12,7 +12,7 @@ from .voice_measurement_result_type import VoiceMeasurementResultType
 
 class VoiceMeasurementResult(UniversalBaseModel):
     """
-    Expression measurements for a window of speech within an utterance. The window spans `audio_start_ms` to `audio_end_ms` and covers up to the most recent 10 seconds of the utterance, so consecutive measurements of a long utterance may overlap.
+    Expression measurements for a window of speech within an utterance. The window spans `audio_start_ms` to `audio_end_ms` and covers up to the most recent 10 seconds of the utterance. Consecutive measurements of an utterance overlap, except interval measurements at a `measurement_timer_ms` of 10000, which meet end to end.
     """
 
     type: VoiceMeasurementResultType
@@ -39,12 +39,12 @@ class VoiceMeasurementResult(UniversalBaseModel):
     trigger: MeasurementTrigger
     expressions: typing.List[VoiceExpressionScore] = pydantic.Field()
     """
-    Expressions detected in the speech, such as `joy`, `anger` and `chuckling`, in descending order of probability. Only expressions the model judges present are included, each against its own fitted threshold, so the array may be empty. `probability` is calibrated: the measured chance the expression is truly present, at most 0.75.
+    Expressions detected in the speech, such as `joy`, `anger` and `chuckling`, in descending order of probability. Scores with equal probability are ordered by the model's underlying score, then by name. Only expressions judged present are included, each against a threshold set for that expression, so the array may be empty. `probability` is the measured chance that the expression is truly present.
     """
 
     voice_attributes: typing.List[VoiceAttributeScore] = pydantic.Field()
     """
-    Qualities of the voice and the audio, such as `breathy`, `fast` and `background music`, in descending order of probability, then by name. Only scores of 0.85 or above are included, the model's display rule, so the array may be empty.
+    Qualities of the voice and the audio, such as `breathy`, `fast` and `background music`, in descending order of probability. Scores with equal probability are ordered by the model's underlying score, then by name. Only scores of 0.85 or above are included, so the array may be empty.
     """
 
     if IS_PYDANTIC_V2:
