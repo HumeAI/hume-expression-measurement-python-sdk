@@ -2,4 +2,4 @@
 
 import typing
 
-CloseReason = typing.Union[typing.Literal["client_request", "server_shutdown", "error"], typing.Any]
+CloseReason = typing.Union[typing.Literal["client_request", "server_shutdown", "idle_timeout", "error"], typing.Any]

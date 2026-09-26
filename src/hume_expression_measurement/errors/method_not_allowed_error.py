@@ -6,6 +6,6 @@ from ..core.api_error import ApiError
 from ..types.error_body import ErrorBody
 
 
-class ConflictError(ApiError):
+class MethodNotAllowedError(ApiError):
     def __init__(self, body: ErrorBody, headers: typing.Optional[typing.Dict[str, str]] = None):
-        super().__init__(status_code=409, headers=headers, body=body)
+        super().__init__(status_code=405, headers=headers, body=body)

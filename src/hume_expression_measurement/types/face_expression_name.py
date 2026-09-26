@@ -2,5 +2,5 @@
 
 FaceExpressionName = str
 """
-The name of an expression the face endpoint can detect, from a vocabulary that differs from the voice endpoint's; see the [full list of face expressions](/docs/expression-measurement/face/measurements#expressions). Names are lowercase and may contain spaces and punctuation. New names may be added over time; treat a name you do not recognize as a new prediction.
+The name of an expression that can be detected on a face, from a vocabulary that differs from that of voice expressions; see the [full list of face expressions](/docs/expression-measurement/face/measurements#expressions). Names are lowercase and may contain spaces and punctuation. New names may be added over time; treat a name you do not recognize as a new prediction.
 """

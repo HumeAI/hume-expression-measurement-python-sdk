@@ -18,7 +18,7 @@ class AuthenticationError(UniversalBaseModel):
 
     request_id: typing.Optional[str] = pydantic.Field(default=None)
     """
-    Identifies the request at the gateway. Sent only when an API key was rejected.
+    Identifies the request. Sent only when an API key was rejected.
     """
 
     if IS_PYDANTIC_V2:

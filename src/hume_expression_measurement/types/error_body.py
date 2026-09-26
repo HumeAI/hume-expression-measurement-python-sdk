@@ -20,7 +20,7 @@ class ErrorBody(UniversalBaseModel):
     What went wrong, for a person. Its wording may change; switch on `code`.
     """
 
-    request_id: typing.Optional[str] = pydantic.Field(default=None)
+    request_id: str = pydantic.Field()
     """
     Identifies the request in Hume's records. Quote it when contacting support.
     """

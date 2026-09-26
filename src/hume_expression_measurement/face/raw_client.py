@@ -20,7 +20,9 @@ from ..core.request_options import RequestOptions
 from ..core.websocket_compat import InvalidWebSocketStatus, get_status_code
 from ..errors.bad_request_error import BadRequestError
 from ..errors.content_too_large_error import ContentTooLargeError
+from ..errors.forbidden_error import ForbiddenError
 from ..errors.internal_server_error import InternalServerError
+from ..errors.method_not_allowed_error import MethodNotAllowedError
 from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
 from ..errors.unsupported_media_type_error import UnsupportedMediaTypeError
@@ -64,9 +66,9 @@ class RawFaceClient:
 
         | Limit | Value |
         |---|---|
-        | Request size | 25,000,000 bytes, the whole multipart body |
-        | Image size | 2,000,000 bytes |
-        | Pixels per image | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Request size | 25MB, the whole multipart body |
+        | Image size | 2MB |
+        | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
         The request is measured as a whole: an image that is not a JPEG, is over a size limit or cannot be decoded fails the request with `unsupported_media_type`, `image_too_large` or `image_decode_failed`, and no result is returned for any image.
@@ -92,12 +94,12 @@ class RawFaceClient:
             method="POST",
             data={},
             files={
-                "file": [core.with_content_type(file=_file, default_content_type="image/jpeg") for _file in file],
                 **(
                     {"config": (None, json.dumps(jsonable_encoder(config)), "application/json")}
                     if config is not OMIT
                     else {}
                 ),
+                "file": [core.with_content_type(file=_file, default_content_type="image/jpeg") for _file in file],
             },
             request_options=request_options,
             omit=OMIT,
@@ -131,6 +133,28 @@ class RawFaceClient:
                         AuthenticationError,
                         parse_obj_as(
                             type_=AuthenticationError,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 403:
+                raise ForbiddenError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -201,7 +225,7 @@ class RawFaceClient:
 
         The server accepts the first 30 frames immediately, then 30 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and a frame that arrives while the server is at capacity is rejected with `overloaded`. In both cases the frame is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again.
 
-        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`.
+        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`. Only frames sent for measurement count: a frame that is rejected, or has no faces to measure, neither adds to the count nor resets it.
 
         ## Matching results to frames
 
@@ -219,8 +243,8 @@ class RawFaceClient:
 
         | Limit | Value |
         |---|---|
-        | Message size | 2,000,000 bytes |
-        | Pixels per frame | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Message size | 2MB |
+        | Pixels per frame | 8,294,400 (the area of a 3840x2160 image) |
         | Send rate | 30 frames immediately, then 30 frames per second |
         | Faces measured per frame | 64 |
         | Consecutive measurement failures | 5, after which the session ends |
@@ -315,9 +339,9 @@ class AsyncRawFaceClient:
 
         | Limit | Value |
         |---|---|
-        | Request size | 25,000,000 bytes, the whole multipart body |
-        | Image size | 2,000,000 bytes |
-        | Pixels per image | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Request size | 25MB, the whole multipart body |
+        | Image size | 2MB |
+        | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
         The request is measured as a whole: an image that is not a JPEG, is over a size limit or cannot be decoded fails the request with `unsupported_media_type`, `image_too_large` or `image_decode_failed`, and no result is returned for any image.
@@ -343,12 +367,12 @@ class AsyncRawFaceClient:
             method="POST",
             data={},
             files={
-                "file": [core.with_content_type(file=_file, default_content_type="image/jpeg") for _file in file],
                 **(
                     {"config": (None, json.dumps(jsonable_encoder(config)), "application/json")}
                     if config is not OMIT
                     else {}
                 ),
+                "file": [core.with_content_type(file=_file, default_content_type="image/jpeg") for _file in file],
             },
             request_options=request_options,
             omit=OMIT,
@@ -382,6 +406,28 @@ class AsyncRawFaceClient:
                         AuthenticationError,
                         parse_obj_as(
                             type_=AuthenticationError,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 403:
+                raise ForbiddenError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
+            if _response.status_code == 405:
+                raise MethodNotAllowedError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
                             object_=_response.json(),
                         ),
                     ),
@@ -454,7 +500,7 @@ class AsyncRawFaceClient:
 
         The server accepts the first 30 frames immediately, then 30 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and a frame that arrives while the server is at capacity is rejected with `overloaded`. In both cases the frame is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again.
 
-        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`.
+        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`. Only frames sent for measurement count: a frame that is rejected, or has no faces to measure, neither adds to the count nor resets it.
 
         ## Matching results to frames
 
@@ -472,8 +518,8 @@ class AsyncRawFaceClient:
 
         | Limit | Value |
         |---|---|
-        | Message size | 2,000,000 bytes |
-        | Pixels per frame | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Message size | 2MB |
+        | Pixels per frame | 8,294,400 (the area of a 3840x2160 image) |
         | Send rate | 30 frames immediately, then 30 frames per second |
         | Faces measured per frame | 64 |
         | Consecutive measurement failures | 5, after which the session ends |

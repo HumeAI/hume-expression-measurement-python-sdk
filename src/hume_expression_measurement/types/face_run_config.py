@@ -21,11 +21,11 @@ class FaceRunConfig(UniversalBaseModel):
         FieldMetadata(alias="schema"),
         pydantic.Field(
             alias="schema",
-            description="Identifies the layout of this configuration document. Branch on it if you store configurations, so a document in a later layout is recognised rather than misread.",
+            description="Identifies the layout of this configuration. Check it if you store configurations, so one in a later layout is recognized rather than misread.",
         ),
     ]
     """
-    Identifies the layout of this configuration document. Branch on it if you store configurations, so a document in a later layout is recognised rather than misread.
+    Identifies the layout of this configuration. Check it if you store configurations, so one in a later layout is recognized rather than misread.
     """
 
     image: ImageConfig

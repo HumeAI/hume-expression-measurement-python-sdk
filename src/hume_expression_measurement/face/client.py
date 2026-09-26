@@ -62,9 +62,9 @@ class FaceClient:
 
         | Limit | Value |
         |---|---|
-        | Request size | 25,000,000 bytes, the whole multipart body |
-        | Image size | 2,000,000 bytes |
-        | Pixels per image | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Request size | 25MB, the whole multipart body |
+        | Image size | 2MB |
+        | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
         The request is measured as a whole: an image that is not a JPEG, is over a size limit or cannot be decoded fails the request with `unsupported_media_type`, `image_too_large` or `image_decode_failed`, and no result is returned for any image.
@@ -109,7 +109,7 @@ class FaceClient:
 
         The server accepts the first 30 frames immediately, then 30 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and a frame that arrives while the server is at capacity is rejected with `overloaded`. In both cases the frame is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again.
 
-        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`.
+        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`. Only frames sent for measurement count: a frame that is rejected, or has no faces to measure, neither adds to the count nor resets it.
 
         ## Matching results to frames
 
@@ -127,8 +127,8 @@ class FaceClient:
 
         | Limit | Value |
         |---|---|
-        | Message size | 2,000,000 bytes |
-        | Pixels per frame | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Message size | 2MB |
+        | Pixels per frame | 8,294,400 (the area of a 3840x2160 image) |
         | Send rate | 30 frames immediately, then 30 frames per second |
         | Faces measured per frame | 64 |
         | Consecutive measurement failures | 5, after which the session ends |
@@ -234,9 +234,9 @@ class AsyncFaceClient:
 
         | Limit | Value |
         |---|---|
-        | Request size | 25,000,000 bytes, the whole multipart body |
-        | Image size | 2,000,000 bytes |
-        | Pixels per image | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Request size | 25MB, the whole multipart body |
+        | Image size | 2MB |
+        | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
         The request is measured as a whole: an image that is not a JPEG, is over a size limit or cannot be decoded fails the request with `unsupported_media_type`, `image_too_large` or `image_decode_failed`, and no result is returned for any image.
@@ -291,7 +291,7 @@ class AsyncFaceClient:
 
         The server accepts the first 30 frames immediately, then 30 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and a frame that arrives while the server is at capacity is rejected with `overloaded`. In both cases the frame is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again.
 
-        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`.
+        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`. Only frames sent for measurement count: a frame that is rejected, or has no faces to measure, neither adds to the count nor resets it.
 
         ## Matching results to frames
 
@@ -309,8 +309,8 @@ class AsyncFaceClient:
 
         | Limit | Value |
         |---|---|
-        | Message size | 2,000,000 bytes |
-        | Pixels per frame | 8,294,400 (the area of a 3840 by 2160 image) |
+        | Message size | 2MB |
+        | Pixels per frame | 8,294,400 (the area of a 3840x2160 image) |
         | Send rate | 30 frames immediately, then 30 frames per second |
         | Faces measured per frame | 64 |
         | Consecutive measurement failures | 5, after which the session ends |
