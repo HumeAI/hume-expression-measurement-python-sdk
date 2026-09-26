@@ -254,7 +254,7 @@ for event in events.events:
 
 ## Errors
 
-The upload and run methods raise `hume_expression_measurement.core.ApiError` when a request fails. `status_code` holds the HTTP status, and `body` holds the error body, whose `code` says what went wrong.
+The upload and run methods raise `hume_expression_measurement.core.ApiError` when a request fails. `status_code` holds the HTTP status, and `body` holds the error body. For every status except 401, `body` is an `ErrorBody` whose `code` says what went wrong; a 401 carries only a `message`.
 
 ```python
 from hume_expression_measurement.core import ApiError
