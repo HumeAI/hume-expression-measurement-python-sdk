@@ -71,7 +71,7 @@ class RawFaceClient:
         | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
-        The request is measured as a whole: an image that is not a JPEG, is over a size limit or cannot be decoded fails the request with `unsupported_media_type`, `image_too_large` or `image_decode_failed`, and no result is returned for any image. Capacity is checked for each image in turn, so a `503` can arrive after earlier images were measured; the request is then recorded as an `errored` run.
+        Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded, or a server at capacity, can still fail the request with `image_decode_failed` or a `503` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
 
         Parameters
         ----------
@@ -344,7 +344,7 @@ class AsyncRawFaceClient:
         | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
-        The request is measured as a whole: an image that is not a JPEG, is over a size limit or cannot be decoded fails the request with `unsupported_media_type`, `image_too_large` or `image_decode_failed`, and no result is returned for any image. Capacity is checked for each image in turn, so a `503` can arrive after earlier images were measured; the request is then recorded as an `errored` run.
+        Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded, or a server at capacity, can still fail the request with `image_decode_failed` or a `503` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
 
         Parameters
         ----------

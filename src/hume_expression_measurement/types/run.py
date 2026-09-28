@@ -69,7 +69,7 @@ class Run(UniversalBaseModel):
 
     metered_seconds: float = pydantic.Field()
     """
-    Billable seconds for the run. For voice, this is the duration of the audio the server took in. For face, each frame or image the server took in counts as one third of a second, regardless of frame rate, including a realtime frame rejected as invalid after it passed the send-rate and capacity checks. Updated while a realtime run is in progress.
+    Billable seconds for the run. For voice, this is the duration of the audio the server took in. For face, each frame or image the server took in counts as one third of a second, regardless of frame rate, including a realtime frame rejected as invalid after it passed the send-rate and capacity checks. Updated while a realtime run is in progress. A file request that fails is not billed, and a run recorded for it reports 0.
     """
 
     config: RunConfig = pydantic.Field()
