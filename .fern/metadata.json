@@ -1,7 +1,7 @@
 {
-  "cliVersion": "5.139.0",
+  "cliVersion": "5.139.2",
   "generatorName": "fernapi/fern-python-sdk",
-  "generatorVersion": "5.31.2",
+  "generatorVersion": "5.33.1",
   "generatorConfig": {
     "package_name": "hume_expression_measurement",
     "should_generate_websocket_clients": true,
@@ -9,9 +9,9 @@
       "class_name": "ExpressionMeasurementClient"
     }
   },
-  "originGitCommit": "a152d9fa2d7189e8d52c271303da434a56454cd0",
+  "originGitCommit": "57d80169fa8415511137e1e73232024a3ee4ebbb",
   "originGitCommitIsDirty": false,
   "invokedBy": "ci",
   "ciProvider": "github",
-  "sdkVersion": "0.0.107"
+  "sdkVersion": "0.0.111"
 }
