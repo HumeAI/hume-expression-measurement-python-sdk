@@ -1,15 +1,16 @@
 [project]
 name = "hume-expression-measurement"
 dynamic = ["version"]
+license = "MIT"
+license-files = ["LICENSE"]
 
 [tool.poetry]
 name = "hume-expression-measurement"
-version = "0.0.107"
+version = "0.0.111"
 description = "A Python SDK for the Hume Expression Measurement API"
 readme = "README.md"
 authors = []
 keywords = []
-license = "MIT"
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
@@ -26,8 +27,7 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
     "Topic :: Software Development :: Libraries :: Python Modules",
-    "Typing :: Typed",
-    "License :: OSI Approved :: MIT License"
+    "Typing :: Typed"
 ]
 packages = [
     { include = "hume_expression_measurement", from = "src"}
