@@ -91,7 +91,13 @@ The realtime endpoints take media that is still arriving, such as audio from a l
 Stream the audio in frames, close the session, and read the results.
 
 ```python
-from hume_expression_measurement import ExpressionMeasurementClient, SessionClose
+from hume_expression_measurement import (
+    Error,
+    ExpressionMeasurementClient,
+    SessionClose,
+    VoiceMeasurementResult,
+    VoiceSessionClosed,
+)
 
 client = ExpressionMeasurementClient()
 
@@ -105,12 +111,12 @@ with client.voice.connect() as socket:
     socket.send_voice_session_close(SessionClose(type="session.close"))
 
     for message in socket:
-        if message.type == "measurement.result":
+        if isinstance(message, VoiceMeasurementResult):
             top = ", ".join(f"{score.name} {score.probability:.2f}" for score in message.expressions[:3])
             print(f"utterance {message.utterance_id}, {message.audio_start_ms} to {message.audio_end_ms} ms: {top}")
-        elif message.type == "error":
+        elif isinstance(message, Error):
             print(f"{message.code}: {message.message}")
-        elif message.type == "session.closed":
+        elif isinstance(message, VoiceSessionClosed):
             print(f"closed after {message.produced.measurements} measurements")
             break
 ```
@@ -122,7 +128,13 @@ The server detects speech, groups it into utterances, and sends a `measurement.r
 The face endpoint accepts one complete JPEG image per frame and answers each accepted frame with one `measurement.result` listing every face it detected.
 
 ```python
-from hume_expression_measurement import ExpressionMeasurementClient, SessionClose
+from hume_expression_measurement import (
+    Error,
+    ExpressionMeasurementClient,
+    FaceMeasurementResult,
+    FaceSessionClosed,
+    SessionClose,
+)
 
 client = ExpressionMeasurementClient()
 
@@ -132,13 +144,13 @@ with client.face.connect() as socket:
     socket.send_face_session_close(SessionClose(type="session.close"))
 
     for message in socket:
-        if message.type == "measurement.result":
+        if isinstance(message, FaceMeasurementResult):
             for face in message.faces:
                 top = ", ".join(f"{score.name} {score.probability:.2f}" for score in face.expressions[:3])
                 print(f"face {face.face_id} at {face.bbox}: {top}")
-        elif message.type == "error":
+        elif isinstance(message, Error):
             print(f"{message.code}: {message.message}")
-        elif message.type == "session.closed":
+        elif isinstance(message, FaceSessionClosed):
             break
 ```
 
@@ -146,16 +158,16 @@ with client.face.connect() as socket:
 
 ### Handling messages
 
-Iterating a socket yields one typed model per message. Each model has a `type` field, so a chain of `if` statements on `message.type` is enough to dispatch. `recv()` returns the next message when you would rather pull one at a time.
+Iterating a socket yields one message at a time, each parsed into the model for its `type`. Check the model with `isinstance`, which also lets a type checker narrow the message to that model's fields. `recv()` returns the next message when you would rather pull one at a time. Every model is exported from `hume_expression_measurement`.
 
-| Message | Voice | Face | Meaning |
+| Message | Voice model | Face model | Meaning |
 |---|---|---|---|
-| `session.created` | yes | yes | Sent on connect with the session ID and the default configuration. |
-| `session.updated` | yes | yes | Confirms a `session.update` and states the configuration in force. |
-| `utterance.start`, `utterance.end` | yes | no | Bracket one continuous stretch of speech. |
-| `measurement.result` | yes | yes | Scores for one window of an utterance, or for the faces in one image. |
-| `error` | yes | yes | A rejected frame or a failed session, with a `code` and whether it is `retryable`. |
-| `session.closed` | yes | yes | The last message. States why the session ended and totals what was received and produced. |
+| `session.created` | `VoiceSessionCreated` | `FaceSessionCreated` | Sent on connect with the session ID and the default configuration. |
+| `session.updated` | `VoiceSessionUpdated` | `FaceSessionUpdated` | Confirms a `session.update` and states the configuration in force. |
+| `utterance.start`, `utterance.end` | `UtteranceStart`, `UtteranceEnd` | None | Bracket one continuous stretch of speech. |
+| `measurement.result` | `VoiceMeasurementResult` | `FaceMeasurementResult` | Scores for one window of an utterance, or for the faces in one image. |
+| `error` | `Error` | `Error` | A rejected frame or a failed session, with a `code` and whether it is `retryable`. |
+| `session.closed` | `VoiceSessionClosed` | `FaceSessionClosed` | The last message. States why the session ended and totals what was received and produced. |
 
 ## Async client
 
@@ -164,7 +176,12 @@ Iterating a socket yields one typed model per message. Each model has a `type` f
 ```python
 import asyncio
 
-from hume_expression_measurement import AsyncExpressionMeasurementClient, SessionClose
+from hume_expression_measurement import (
+    AsyncExpressionMeasurementClient,
+    SessionClose,
+    VoiceMeasurementResult,
+    VoiceSessionClosed,
+)
 
 
 async def main() -> None:
@@ -181,9 +198,9 @@ async def main() -> None:
         await socket.send_voice_session_close(SessionClose(type="session.close"))
 
         async for message in socket:
-            if message.type == "measurement.result":
+            if isinstance(message, VoiceMeasurementResult):
                 print(message.expressions[:3])
-            elif message.type == "session.closed":
+            elif isinstance(message, VoiceSessionClosed):
                 break
 
 
