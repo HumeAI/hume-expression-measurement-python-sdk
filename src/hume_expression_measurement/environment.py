@@ -12,5 +12,5 @@ class ExpressionMeasurementClientEnvironment:
 
 
 ExpressionMeasurementClientEnvironment.PRODUCTION = ExpressionMeasurementClientEnvironment(
-    base="https://api.hume.ai", production="wss://api.hume.ai"
+    base="https://api.cloud.hume.ai", production="wss://api.cloud.hume.ai"
 )
