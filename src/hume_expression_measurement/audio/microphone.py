@@ -15,6 +15,8 @@ _PORTAUDIO_MISSING = (
     "sounddevice is installed, but the PortAudio library it records through is not. Install PortAudio "
     "with your system package manager, for example `sudo apt-get install libportaudio2` on Debian or Ubuntu."
 )
+# PortAudio keeps recording when the loop falls behind, so the audio waiting for it needs a cap.
+_MAX_BACKLOG_SECONDS = 10
 
 
 class _DeviceInfo(typing.TypedDict):
@@ -56,6 +58,7 @@ class _SoundDevice(typing.Protocol):
 class _Signal(enum.Enum):
     FINISHED = enum.auto()
     SUPERSEDED = enum.auto()
+    OVERFLOWED = enum.auto()
 
 
 _Queue = asyncio.Queue[typing.Union[npt.NDArray[np.float32], _Signal]]
@@ -76,7 +79,8 @@ class Microphone:
     a new `async for` ends any earlier one. When the `async with` block exits, an `async for`
     running in another task yields the rest of the audio and then ends. If the audio stream
     stops on its own before then, which some audio systems do when the device is disconnected,
-    iteration raises RuntimeError.
+    iteration raises RuntimeError. Iteration also raises RuntimeError if more than 10 seconds of
+    recorded audio builds up waiting for the loop, and the waiting audio is discarded.
 
     On macOS the first recording triggers a permission prompt for the terminal or app running
     Python. If access is denied, the device records silence rather than raising an error.
@@ -132,9 +136,9 @@ class Microphone:
         check_frame_ms(frame_ms)
         # Loaded here so a missing soxr is reported before recording rather than at the first `async for`.
         import_optional("soxr")
-        # PortAudio is called directly rather than through asyncio.to_thread. Cancelling a task
-        # does not stop its worker thread, so a cancelled open could leave a stream open or stop
-        # it while it is still starting, and PortAudio does not allow overlapping calls on a stream.
+        # PortAudio stays on the event loop thread. Cancelling an asyncio.to_thread call leaves its
+        # worker thread running, so a cancelled open could leak the stream or stop it mid-start,
+        # and PortAudio does not allow overlapping calls on a stream.
         sounddevice, info = _find_input_device(device)
         microphone = cls.__new__(cls)
         microphone._setup(info, frame_ms)
@@ -160,8 +164,10 @@ class Microphone:
         self.device_sample_rate = int(info["default_samplerate"])
         self._frame_ms = frame_ms
         self._loop = asyncio.get_running_loop()
-        # The queue of the current `async for`, or None when nothing iterates.
+        # None while nothing iterates, which is what discards audio recorded between loops.
         self._queue: typing.Optional[_Queue] = None
+        self._backlog = 0
+        self._max_backlog = self.device_sample_rate * _MAX_BACKLOG_SECONDS
         self._closing = False
         self._finished = False
 
@@ -170,6 +176,7 @@ class Microphone:
             self._queue.put_nowait(_Signal.SUPERSEDED)
         queue: _Queue = asyncio.Queue()
         self._queue = None if self._finished else queue
+        self._backlog = 0
         return self._iter_frames(queue)
 
     async def _iter_frames(self, queue: _Queue) -> typing.AsyncIterator[bytes]:
@@ -181,10 +188,17 @@ class Microphone:
                     item = await queue.get()
                     if isinstance(item, _Signal):
                         break
+                    if self._queue is queue:
+                        self._backlog -= len(item)
                     for frame in frames.push(resampler.process(item)):
                         yield frame
                 if item is _Signal.SUPERSEDED:
                     return
+                if item is _Signal.OVERFLOWED:
+                    raise RuntimeError(
+                        f"More than {_MAX_BACKLOG_SECONDS} seconds of audio from {self.device_name} built up "
+                        "waiting for the `async for` loop, which means the loop body is too slow for live audio."
+                    )
                 for frame in frames.push(resampler.flush()):
                     yield frame
                 rest = frames.finish()
@@ -210,8 +224,18 @@ class Microphone:
         self._loop.call_soon_threadsafe(self._finish)
 
     def _receive(self, block: npt.NDArray[np.float32]) -> None:
-        if self._queue is not None:
-            self._queue.put_nowait(block)
+        queue = self._queue
+        if queue is None:
+            return
+        self._backlog += len(block)
+        if self._backlog <= self._max_backlog:
+            queue.put_nowait(block)
+            return
+        # Emptied so the backlog's memory is released even if the loop never reads again.
+        while not queue.empty():
+            queue.get_nowait()
+        queue.put_nowait(_Signal.OVERFLOWED)
+        self._queue = None
 
     def _finish(self) -> None:
         if self._finished:

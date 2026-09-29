@@ -217,6 +217,33 @@ async def test_stream_that_stops_on_its_own_raises(monkeypatch: pytest.MonkeyPat
                 pass
 
 
+async def test_falling_more_than_10_seconds_behind_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        stream = fake.streams[0]
+        frames = aiter(microphone)
+        for _ in range(1000):
+            stream.emit(_constant(0.25))
+        await asyncio.sleep(0)
+        assert await anext(frames) == _pcm(0.25)
+        for _ in range(2):
+            stream.emit(_constant(0.25))
+        await asyncio.sleep(0)
+
+        with pytest.raises(RuntimeError, match="More than 10 seconds of audio from Built-in Microphone"):
+            await anext(frames)
+        stream.emit(_constant(0.5))
+        await asyncio.sleep(0)
+        loop = asyncio.get_running_loop()
+        loop.call_soon(stream.emit, _constant(-0.5))
+        async for frame in microphone:
+            break
+
+    assert frame == _pcm(-0.5)
+
+
 @pytest.mark.parametrize(
     ("device", "default_input", "message"),
     [

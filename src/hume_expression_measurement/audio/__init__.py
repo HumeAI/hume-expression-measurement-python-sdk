@@ -9,8 +9,8 @@ Requires the audio extra: pip install "hume-expression-measurement[audio]"
 
 from ._optional import MissingDependencyError, import_optional
 
-# Every helper module imports numpy at load time, so check once here to raise the error that
-# names the install command.
+# Checked before the helper modules, which all import numpy at load time, so a missing numpy
+# raises the error that names the install command.
 import_optional("numpy")
 
 from .microphone import Microphone

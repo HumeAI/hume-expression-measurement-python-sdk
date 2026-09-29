@@ -20,6 +20,9 @@ _SUBFORMAT_GUID_SUFFIX = bytes.fromhex("000000001000800000aa00389b71")
 _UNKNOWN_SIZE = 0xFFFFFFFF
 _SAMPLE_WIDTHS = {_PCM: (1, 2, 3, 4), _IEEE_FLOAT: (4, 8)}
 _SKIP_READ_BYTES = 64 * 1024
+# The extensible header is all the reader parses. The rest of a longer fmt chunk is skipped,
+# because its size comes from the file and can be arbitrarily large.
+_FMT_READ_BYTES = 40
 
 
 class _Format(typing.NamedTuple):
@@ -119,7 +122,9 @@ def _read_header(file: typing.BinaryIO, path: str) -> typing.Tuple[_Format, typi
         # Chunks with an odd size are followed by a padding byte.
         padded_size = size + size % 2
         if chunk_id == b"fmt ":
-            fmt = _parse_format(file.read(padded_size)[:size], path)
+            body = file.read(min(size, _FMT_READ_BYTES))
+            fmt = _parse_format(body, path)
+            _skip(file, padded_size - len(body))
         else:
             _skip(file, padded_size)
 
@@ -128,7 +133,8 @@ def _skip(file: typing.BinaryIO, size: int) -> None:
     if file.seekable():
         file.seek(size, os.SEEK_CUR)
         return
-    # A pipe, such as ffmpeg writing to stdout, cannot seek, so read past the chunk in pieces.
+    # A pipe, such as ffmpeg writing to stdout, cannot seek. Reading in pieces keeps a large chunk
+    # out of memory.
     while size > 0:
         skipped = len(file.read(min(size, _SKIP_READ_BYTES)))
         if not skipped:

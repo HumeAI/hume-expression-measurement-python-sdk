@@ -29,6 +29,7 @@ def _write_raw_wav(
     bits: int,
     data: bytes,
     extensible: bool = False,
+    fmt_extra: bytes = b"",
     data_size: typing.Optional[int] = None,
 ) -> pathlib.Path:
     block_align = channels * bits // 8
@@ -38,9 +39,10 @@ def _write_raw_wav(
     if extensible:
         subformat = struct.pack("<H", tag) + bytes.fromhex("000000001000800000aa00389b71")
         fmt += struct.pack("<HHI", 22, bits, 0) + subformat
+    fmt += fmt_extra
     # An odd-sized chunk before the data exercises the padding byte that follows it.
     info = b"INFOISFT\x05\x00\x00\x00Lavf\x00"
-    body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt
+    body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"\x00" * (len(fmt) % 2)
     body += b"LIST" + struct.pack("<I", len(info)) + info + b"\x00"
     body += b"data" + struct.pack("<I", len(data) if data_size is None else data_size) + data
     path.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
@@ -90,6 +92,22 @@ def test_extensible_header_reads_like_the_basic_header(tmp_path: pathlib.Path) -
     )
 
     assert list(iter_wav_frames(extensible)) == list(iter_wav_frames(basic))
+
+
+def test_bytes_after_the_format_fields_are_skipped(tmp_path: pathlib.Path) -> None:
+    data = np.arange(-800, 800, dtype="<i2").tobytes()
+    path = _write_raw_wav(
+        tmp_path / "long-fmt.wav",
+        tag=1,
+        sample_rate=16000,
+        channels=1,
+        bits=16,
+        data=data,
+        extensible=True,
+        fmt_extra=bytes(range(21)),
+    )
+
+    assert b"".join(iter_wav_frames(path)) == data
 
 
 @pytest.mark.parametrize(("bits", "extensible"), [(32, False), (64, True)])

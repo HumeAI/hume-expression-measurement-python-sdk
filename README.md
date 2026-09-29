@@ -211,7 +211,7 @@ asyncio.run(main())
 
 ## Audio helpers
 
-`hume_expression_measurement.audio` records from a microphone and converts audio of any sample rate, channel count, and bit depth into frames for the realtime voice endpoint. Install it with the `audio` extra:
+`hume_expression_measurement.audio` records from a microphone and converts audio of any sample rate and channel count into frames for the realtime voice endpoint. Install it with the `audio` extra:
 
 ```bash
 pip install "hume-expression-measurement[audio]"
@@ -272,7 +272,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-The device records at its own sample rate, and the SDK converts the first channel to 16 kHz mono. Each `async for` starts with live audio: audio recorded while nothing iterates the microphone is discarded, so a push-to-talk loop never sends stale audio. An unknown device, or one that is not an input device, raises a `ValueError` that lists the available input devices. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
+The device records at its own sample rate, and the SDK converts the first channel to 16 kHz mono. Each `async for` starts with live audio: audio recorded while nothing iterates the microphone is discarded, so a push-to-talk loop never sends stale audio. If the loop body is too slow and more than 10 seconds of audio builds up, iteration raises a `RuntimeError`. An unknown device, or one that is not an input device, raises a `ValueError` that lists the available input devices. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
 
 ### WAV files
 
