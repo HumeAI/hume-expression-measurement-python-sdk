@@ -19,6 +19,7 @@ _SUBFORMAT_GUID_SUFFIX = bytes.fromhex("000000001000800000aa00389b71")
 # Writers that cannot seek back to fill in the size, such as ffmpeg writing to a pipe, leave this.
 _UNKNOWN_SIZE = 0xFFFFFFFF
 _SAMPLE_WIDTHS = {_PCM: (1, 2, 3, 4), _IEEE_FLOAT: (4, 8)}
+_SKIP_READ_BYTES = 64 * 1024
 
 
 class _Format(typing.NamedTuple):
@@ -120,7 +121,19 @@ def _read_header(file: typing.BinaryIO, path: str) -> typing.Tuple[_Format, typi
         if chunk_id == b"fmt ":
             fmt = _parse_format(file.read(padded_size)[:size], path)
         else:
-            file.seek(padded_size, os.SEEK_CUR)
+            _skip(file, padded_size)
+
+
+def _skip(file: typing.BinaryIO, size: int) -> None:
+    if file.seekable():
+        file.seek(size, os.SEEK_CUR)
+        return
+    # A pipe, such as ffmpeg writing to stdout, cannot seek, so read past the chunk in pieces.
+    while size > 0:
+        skipped = len(file.read(min(size, _SKIP_READ_BYTES)))
+        if not skipped:
+            return
+        size -= skipped
 
 
 def _parse_format(body: bytes, path: str) -> _Format:

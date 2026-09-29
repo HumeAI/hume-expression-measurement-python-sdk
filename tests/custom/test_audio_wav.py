@@ -1,5 +1,7 @@
+import os
 import pathlib
 import struct
+import threading
 import typing
 import wave
 
@@ -109,6 +111,23 @@ def test_data_of_unknown_size_is_read_to_the_end_of_the_file(tmp_path: pathlib.P
     )
 
     assert b"".join(iter_wav_frames(path)) == pcm
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs os.mkfifo")
+def test_wav_from_a_pipe_is_read(tmp_path: pathlib.Path) -> None:
+    pcm = np.arange(-800, 800, dtype="<i2").tobytes()
+    wav = _write_raw_wav(
+        tmp_path / "piped.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=pcm, data_size=0xFFFFFFFF
+    ).read_bytes()
+    fifo = tmp_path / "pipe"
+    os.mkfifo(fifo)
+    writer = threading.Thread(target=fifo.write_bytes, args=(wav,))
+    writer.start()
+
+    frames = list(iter_wav_frames(fifo))
+    writer.join()
+
+    assert b"".join(frames) == pcm
 
 
 def test_file_ending_partway_through_a_sample_is_read_to_the_last_whole_sample(tmp_path: pathlib.Path) -> None:
