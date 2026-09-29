@@ -31,5 +31,7 @@ def import_optional(name: str) -> types.ModuleType:
     """
     try:
         return importlib.import_module(name)
-    except ImportError as err:
+    except ModuleNotFoundError as err:
+        if err.name != name:
+            raise
         raise missing_dependency(name) from err

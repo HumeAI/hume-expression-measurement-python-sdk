@@ -450,3 +450,18 @@ async def test_missing_portaudio_names_the_system_package(monkeypatch: pytest.Mo
     with pytest.raises(MissingDependencyError, match="libportaudio2"):
         async with Microphone.open():
             pass
+
+
+async def test_a_broken_sounddevice_install_raises_its_own_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import_module = importlib.import_module
+
+    def import_without_cffi(name: str, package: typing.Optional[str] = None) -> types.ModuleType:
+        if name == "sounddevice":
+            raise ModuleNotFoundError("No module named '_cffi_backend'", name="_cffi_backend")
+        return import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", import_without_cffi)
+
+    with pytest.raises(ModuleNotFoundError, match="_cffi_backend"):
+        async with Microphone.open():
+            pass
