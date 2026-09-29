@@ -215,6 +215,21 @@ async def test_starting_a_new_iteration_ends_the_earlier_one(monkeypatch: pytest
         assert await asyncio.wait_for(older, timeout=1) == []
 
 
+async def test_a_superseded_iteration_ends_without_yielding_its_waiting_audio(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        older = aiter(microphone)
+        for _ in range(3):
+            fake.streams[0].emit(_constant(0.25))
+        await asyncio.sleep(0)
+        aiter(microphone)
+
+        with pytest.raises(StopAsyncIteration):
+            await anext(older)
+
+
 async def test_iteration_ends_when_the_microphone_closes(monkeypatch: pytest.MonkeyPatch) -> None:
     _install(monkeypatch, _FakeSoundDevice([_device("Built-in Microphone")]))
 

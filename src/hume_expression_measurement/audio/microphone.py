@@ -183,7 +183,7 @@ class Microphone:
         queue: _Queue = asyncio.Queue()
         with self._lock:
             if self._queue is not None:
-                self._queue.put_nowait(_Signal.SUPERSEDED)
+                _end_iteration(self._queue, _Signal.SUPERSEDED)
             self._queue = None if self._finished else queue
             self._backlog = 0
         return self._iter_frames(queue)
@@ -237,19 +237,13 @@ class Microphone:
             self._backlog += len(indata)
             if self._backlog > self._max_backlog:
                 self._queue = None
-                self._loop.call_soon_threadsafe(self._overflow, queue)
+                self._loop.call_soon_threadsafe(_end_iteration, queue, _Signal.OVERFLOWED)
                 return
             self._loop.call_soon_threadsafe(queue.put_nowait, indata[:, 0].copy())
 
     # PortAudio calls this after the last `_on_block`, so the signal is queued behind every block.
     def _on_finished(self) -> None:
         self._loop.call_soon_threadsafe(self._finish)
-
-    def _overflow(self, queue: _Queue) -> None:
-        # Emptied so the backlog's memory is released even if the loop never reads again.
-        while not queue.empty():
-            queue.get_nowait()
-        queue.put_nowait(_Signal.OVERFLOWED)
 
     def _finish(self) -> None:
         if self._finished:
@@ -284,6 +278,14 @@ def _input_devices(sounddevice: _SoundDevice) -> str:
     if not inputs:
         return "No input devices are available."
     return "Available input devices: " + "; ".join(inputs) + "."
+
+
+def _end_iteration(queue: _Queue, signal: _Signal) -> None:
+    # Emptied first so the iteration sees the signal next instead of yielding the audio waiting
+    # ahead of it, and so that audio's memory is released even if the loop never reads again.
+    while not queue.empty():
+        queue.get_nowait()
+    queue.put_nowait(signal)
 
 
 def _stop_and_close(stream: _InputStream) -> None:
