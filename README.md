@@ -276,7 +276,7 @@ The device records at its own sample rate, and the SDK converts the first channe
 
 ### WAV files
 
-`iter_wav_frames` reads 8, 16, 24, or 32-bit PCM WAV at any sample rate and channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
+`iter_wav_frames` reads 8, 16, 24, or 32-bit integer and 32 or 64-bit floating-point WAV at any sample rate and channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
 
 ```python
 from hume_expression_measurement.audio import iter_wav_frames
@@ -287,7 +287,7 @@ with client.voice.connect() as socket:
     socket.send_voice_session_close(SessionClose(type="session.close"))
 ```
 
-Frames are produced as fast as the file is read, so pace the sends for a file longer than 30 seconds. Floating-point and compressed WAV files raise a `ValueError` with an ffmpeg command that converts them.
+Frames are produced as fast as the file is read, so pace the sends for a file longer than 30 seconds. Compressed WAV files raise a `ValueError` with an ffmpeg command that converts them.
 
 ### Other sources
 
