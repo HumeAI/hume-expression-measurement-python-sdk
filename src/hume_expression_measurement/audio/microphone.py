@@ -2,12 +2,13 @@
 
 import asyncio
 import contextlib
+import enum
 import typing
 
 import numpy as np
 import numpy.typing as npt
 from ._optional import MissingDependencyError, import_optional
-from ._pcm import FrameBuffer
+from ._pcm import FrameBuffer, check_frame_ms
 from .resampler import Resampler
 
 _PORTAUDIO_MISSING = (
@@ -48,7 +49,16 @@ class _SoundDevice(typing.Protocol):
         dtype: str,
         device: typing.Union[int, str, None],
         callback: _Callback,
+        finished_callback: typing.Callable[[], None],
     ) -> _InputStream: ...
+
+
+class _Signal(enum.Enum):
+    FINISHED = enum.auto()
+    SUPERSEDED = enum.auto()
+
+
+_Queue = asyncio.Queue[typing.Union[npt.NDArray[np.float32], _Signal]]
 
 
 class Microphone:
@@ -59,9 +69,14 @@ class Microphone:
     The device is opened at its own default sample rate and converted with `Resampler`, so any
     microphone works whatever its native format. Only the device's first channel is recorded.
 
-    Open one with `Microphone.open` rather than constructing it. Iteration yields frames until
-    the `async with` block exits; breaking out of the loop stops iteration but keeps recording
-    until then.
+    Open one with `Microphone.open` rather than constructing it.
+
+    Each `async for` yields audio recorded from the moment it starts. Audio recorded while
+    nothing iterates is discarded, so a paused loop never resumes with stale audio, and starting
+    a new `async for` ends any earlier one. When the `async with` block exits, an `async for`
+    running in another task yields the rest of the audio and then ends. If the audio stream
+    stops on its own before then, which some audio systems do when the device is disconnected,
+    iteration raises RuntimeError.
 
     On macOS the first recording triggers a permission prompt for the terminal or app running
     Python. If access is denied, the device records silence rather than raising an error.
@@ -75,23 +90,14 @@ class Microphone:
             await socket.send_audio_frame(frame)
     """
 
-    def __init__(
-        self,
-        *,
-        device_name: str,
-        device_sample_rate: int,
-        blocks: "asyncio.Queue[typing.Optional[npt.NDArray[np.float32]]]",
-        resampler: Resampler,
-        frames: FrameBuffer,
-    ) -> None:
-        self.device_name = device_name
-        """Name of the input device being recorded."""
-        self.device_sample_rate = device_sample_rate
-        """Sample rate, in Hz, the device records at before conversion to 16 kHz."""
-        self._blocks = blocks
-        self._resampler = resampler
-        self._frames = frames
-        self._closed = False
+    device_name: str
+    """Name of the input device being recorded."""
+
+    device_sample_rate: int
+    """Sample rate, in Hz, the device records at before conversion to 16 kHz."""
+
+    def __init__(self) -> None:
+        raise TypeError("Open a Microphone with `async with Microphone.open() as microphone:`.")
 
     @classmethod
     @contextlib.asynccontextmanager
@@ -116,57 +122,110 @@ class Microphone:
             The audio extra, or the PortAudio system library, is not installed.
 
         ValueError
-            frame_ms is out of range, or the device does not exist or has no input channels.
+            frame_ms is out of range, or the device does not exist or is not an input device.
             The message lists the available input devices.
 
         sounddevice.PortAudioError
             The device exists but could not be opened, for example because another application
             holds it exclusively.
         """
-        frames = FrameBuffer(frame_ms)
-        sounddevice = _load_sounddevice()
-        info = _input_device(sounddevice, device)
-        sample_rate = int(info["default_samplerate"])
-        resampler = Resampler(sample_rate=sample_rate, channels=1, sample_format="float32")
-        loop = asyncio.get_running_loop()
-        blocks: "asyncio.Queue[typing.Optional[npt.NDArray[np.float32]]]" = asyncio.Queue()
-
-        # PortAudio calls this on its own thread and reuses `indata` after it returns.
-        def on_block(indata: npt.NDArray[np.float32], _frames: int, _time: typing.Any, _status: typing.Any) -> None:
-            loop.call_soon_threadsafe(blocks.put_nowait, indata[:, 0].copy())
-
-        stream = sounddevice.InputStream(
-            samplerate=sample_rate, channels=1, dtype="float32", device=device, callback=on_block
-        )
-        microphone = cls(
-            device_name=info["name"],
-            device_sample_rate=sample_rate,
-            blocks=blocks,
-            resampler=resampler,
-            frames=frames,
+        check_frame_ms(frame_ms)
+        # Loaded here so a missing soxr is reported before recording rather than at the first `async for`.
+        import_optional("soxr")
+        sounddevice, info = await asyncio.to_thread(_find_input_device, device)
+        microphone = cls.__new__(cls)
+        microphone._setup(info, frame_ms)
+        stream = await asyncio.to_thread(
+            sounddevice.InputStream,
+            samplerate=microphone.device_sample_rate,
+            channels=1,
+            dtype="float32",
+            device=device,
+            callback=microphone._on_block,
+            finished_callback=microphone._on_finished,
         )
         try:
-            stream.start()
+            await asyncio.to_thread(stream.start)
             yield microphone
         finally:
-            stream.stop()
-            stream.close()
-            microphone._close()
+            microphone._closing = True
+            await asyncio.to_thread(_stop_and_close, stream)
+            microphone._finish()
+
+    def _setup(self, info: _DeviceInfo, frame_ms: int) -> None:
+        self.device_name = info["name"]
+        self.device_sample_rate = int(info["default_samplerate"])
+        self._frame_ms = frame_ms
+        self._loop = asyncio.get_running_loop()
+        # The queue of the current `async for`, or None when nothing iterates.
+        self._queue: typing.Optional[_Queue] = None
+        self._closing = False
+        self._finished = False
 
     def __aiter__(self) -> typing.AsyncIterator[bytes]:
-        return self._iter_frames()
+        if self._queue is not None:
+            self._queue.put_nowait(_Signal.SUPERSEDED)
+        queue: _Queue = asyncio.Queue()
+        self._queue = None if self._finished else queue
+        return self._iter_frames(queue)
 
-    async def _iter_frames(self) -> typing.AsyncIterator[bytes]:
-        while not self._closed:
-            block = await self._blocks.get()
-            if block is None:
-                return
-            for frame in self._frames.push(self._resampler.process(block)):
-                yield frame
+    async def _iter_frames(self, queue: _Queue) -> typing.AsyncIterator[bytes]:
+        resampler = Resampler(sample_rate=self.device_sample_rate, channels=1, sample_format="float32")
+        frames = FrameBuffer(self._frame_ms)
+        try:
+            if not self._finished:
+                while True:
+                    item = await queue.get()
+                    if isinstance(item, _Signal):
+                        break
+                    for frame in frames.push(resampler.process(item)):
+                        yield frame
+                if item is _Signal.SUPERSEDED:
+                    return
+                for frame in frames.push(resampler.flush()):
+                    yield frame
+                rest = frames.finish()
+                if rest is not None:
+                    yield rest
+            if not self._closing:
+                raise RuntimeError(
+                    f"The audio stream from {self.device_name} stopped, "
+                    "for example because the device was disconnected."
+                )
+        finally:
+            # A loop exited with `break` reaches here only once the event loop finalizes the
+            # generator, and by then a newer `async for` may own the queue.
+            if self._queue is queue:
+                self._queue = None
 
-    def _close(self) -> None:
-        self._closed = True
-        self._blocks.put_nowait(None)
+    # PortAudio calls this on its own thread and reuses `indata` after it returns.
+    def _on_block(self, indata: npt.NDArray[np.float32], _frames: int, _time: typing.Any, _status: typing.Any) -> None:
+        self._loop.call_soon_threadsafe(self._receive, indata[:, 0].copy())
+
+    # PortAudio calls this after the last `_on_block`, so the signal is queued behind every block.
+    def _on_finished(self) -> None:
+        self._loop.call_soon_threadsafe(self._finish)
+
+    def _receive(self, block: npt.NDArray[np.float32]) -> None:
+        if self._queue is not None:
+            self._queue.put_nowait(block)
+
+    def _finish(self) -> None:
+        if self._finished:
+            return
+        self._finished = True
+        if self._queue is not None:
+            self._queue.put_nowait(_Signal.FINISHED)
+
+
+def _find_input_device(device: typing.Union[int, str, None]) -> typing.Tuple[_SoundDevice, _DeviceInfo]:
+    sounddevice = _load_sounddevice()
+    try:
+        info = typing.cast(_DeviceInfo, sounddevice.query_devices(device, kind="input"))
+    except (ValueError, sounddevice.PortAudioError) as err:
+        reason = "There is no default input device" if device is None else str(err)
+        raise ValueError(f"{reason}. {_input_devices(sounddevice)}") from err
+    return sounddevice, info
 
 
 def _load_sounddevice() -> _SoundDevice:
@@ -176,19 +235,16 @@ def _load_sounddevice() -> _SoundDevice:
         raise MissingDependencyError(_PORTAUDIO_MISSING, name="sounddevice") from err
 
 
-def _input_device(sounddevice: _SoundDevice, device: typing.Union[int, str, None]) -> _DeviceInfo:
-    try:
-        info = typing.cast(_DeviceInfo, sounddevice.query_devices(device, kind="input"))
-    except (ValueError, sounddevice.PortAudioError) as err:
-        raise ValueError(f"No input device matches {device!r} ({err}). {_input_devices(sounddevice)}") from err
-    if info["max_input_channels"] < 1:
-        raise ValueError(f"{info['name']} has no input channels. {_input_devices(sounddevice)}")
-    return info
-
-
 def _input_devices(sounddevice: _SoundDevice) -> str:
     devices = typing.cast(typing.Sequence[_DeviceInfo], sounddevice.query_devices())
     inputs = [f"{index}: {info['name']}" for index, info in enumerate(devices) if info["max_input_channels"] > 0]
     if not inputs:
         return "No input devices are available."
     return "Available input devices: " + "; ".join(inputs) + "."
+
+
+def _stop_and_close(stream: _InputStream) -> None:
+    try:
+        stream.stop()
+    finally:
+        stream.close()

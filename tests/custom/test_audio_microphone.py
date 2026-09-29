@@ -1,7 +1,7 @@
 import asyncio
 import importlib
+import re
 import sys
-import threading
 import types
 import typing
 
@@ -17,29 +17,31 @@ class _PortAudioError(Exception):
 
 
 class _FakeStream:
-    def __init__(
-        self, blocks: typing.Sequence[npt.NDArray[np.float32]], fail_on_start: bool, **settings: typing.Any
-    ) -> None:
+    """Delivers audio only when a test calls `emit`, on the calling thread."""
+
+    def __init__(self, fail_on_start: bool, **settings: typing.Any) -> None:
         self.settings = settings
         self.stopped = False
         self.closed = False
-        self._blocks = blocks
         self._fail_on_start = fail_on_start
-        self._thread: typing.Optional[threading.Thread] = None
+        self._active = False
 
     def start(self) -> None:
         if self._fail_on_start:
             raise _PortAudioError("Device unavailable")
-        self._thread = threading.Thread(target=self._deliver)
-        self._thread.start()
+        self._active = True
 
-    def _deliver(self) -> None:
-        for block in self._blocks:
-            self.settings["callback"](block, len(block), None, None)
+    def emit(self, block: npt.NDArray[np.float32]) -> None:
+        self.settings["callback"](block.reshape(-1, 1), len(block), None, None)
+
+    def end(self) -> None:
+        """Stops the stream the way PortAudio does when the device goes away."""
+        if self._active:
+            self._active = False
+            self.settings["finished_callback"]()
 
     def stop(self) -> None:
-        if self._thread is not None:
-            self._thread.join()
+        self.end()
         self.stopped = True
 
     def close(self) -> None:
@@ -47,17 +49,19 @@ class _FakeStream:
 
 
 class _FakeSoundDevice:
+    """Looks up devices and raises errors the way sounddevice 0.5 does."""
+
     PortAudioError = _PortAudioError
 
     def __init__(
         self,
         devices: typing.List[typing.Dict[str, typing.Any]],
-        blocks: typing.Sequence[npt.NDArray[np.float32]] = (),
+        default_input: typing.Optional[int] = 0,
         fail_on_start: bool = False,
     ) -> None:
         self.devices = devices
         self.streams: typing.List[_FakeStream] = []
-        self._blocks = blocks
+        self._default_input = default_input
         self._fail_on_start = fail_on_start
 
     def query_devices(
@@ -66,16 +70,25 @@ class _FakeSoundDevice:
         if kind is None:
             return self.devices
         if device is None:
-            return self.devices[0]
+            if self._default_input is None:
+                raise _PortAudioError("Error querying device -1")
+            device = self._default_input
         if isinstance(device, str):
-            matches = [info for info in self.devices if device in info["name"]]
+            matches = [
+                index
+                for index, info in enumerate(self.devices)
+                if device in info["name"] and info["max_input_channels"] > 0
+            ]
             if not matches:
                 raise ValueError(f"No input device matching {device!r}")
-            return matches[0]
-        return self.devices[device]
+            device = matches[0]
+        info = self.devices[device]
+        if info["max_input_channels"] < 1:
+            raise ValueError(f"Not an input device: {info['name']!r}")
+        return info
 
     def InputStream(self, **settings: typing.Any) -> _FakeStream:
-        stream = _FakeStream(self._blocks, self._fail_on_start, **settings)
+        stream = _FakeStream(self._fail_on_start, **settings)
         self.streams.append(stream)
         return stream
 
@@ -88,22 +101,36 @@ def _install(monkeypatch: pytest.MonkeyPatch, fake: _FakeSoundDevice) -> None:
     monkeypatch.setitem(sys.modules, "sounddevice", typing.cast(types.ModuleType, fake))
 
 
+def _tone(seconds: float = 1.0) -> npt.NDArray[np.float32]:
+    t = np.arange(int(48000 * seconds)) / 48000
+    return (0.5 * np.sin(2 * np.pi * 1000 * t)).astype(np.float32)
+
+
+def _constant(value: float) -> npt.NDArray[np.float32]:
+    return np.full(160, value, dtype=np.float32)
+
+
+def _pcm(value: float) -> bytes:
+    return np.full(160, round(value * 32768), dtype="<i2").tobytes()
+
+
+async def _collect(microphone: Microphone) -> typing.List[bytes]:
+    return [frame async for frame in microphone]
+
+
 async def test_microphone_yields_16k_frames_of_the_recorded_audio(monkeypatch: pytest.MonkeyPatch) -> None:
-    t = np.arange(48000) / 48000
-    tone = (0.5 * np.sin(2 * np.pi * 1000 * t)).astype(np.float32).reshape(-1, 1)
-    fake = _FakeSoundDevice([_device("Built-in Microphone")], blocks=np.split(tone, 100))
+    fake = _FakeSoundDevice([_device("Built-in Microphone")])
     _install(monkeypatch, fake)
 
-    frames = []
     async with Microphone.open(frame_ms=100) as microphone:
         assert (microphone.device_name, microphone.device_sample_rate) == ("Built-in Microphone", 48000)
-        async for frame in microphone:
-            frames.append(frame)
-            if len(frames) == 9:
-                break
+        frames = aiter(microphone)
+        for block in np.split(_tone(), 100):
+            fake.streams[0].emit(block)
+        received = [await anext(frames) for _ in range(9)]
 
-    assert [len(frame) for frame in frames] == [3200] * 9
-    out = np.frombuffer(b"".join(frames), dtype="<i2")
+    assert [len(frame) for frame in received] == [3200] * 9
+    out = np.frombuffer(b"".join(received), dtype="<i2")
     spectrum = np.abs(np.fft.rfft(out))
     assert np.fft.rfftfreq(len(out), 1 / 16000)[np.argmax(spectrum)] == pytest.approx(1000, abs=2)
     stream = fake.streams[0]
@@ -111,32 +138,93 @@ async def test_microphone_yields_16k_frames_of_the_recorded_audio(monkeypatch: p
     assert stream.stopped and stream.closed
 
 
+async def test_closing_yields_all_recorded_audio_before_iteration_ends(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone")])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=100) as microphone:
+        collecting = asyncio.create_task(_collect(microphone))
+        await asyncio.sleep(0)
+        for block in np.split(_tone(0.82), 82):
+            fake.streams[0].emit(block)
+    frames = await asyncio.wait_for(collecting, timeout=1)
+
+    assert all(frames)
+    assert abs(sum(len(frame) for frame in frames) - int(0.82 * 32000)) <= 2
+
+
+async def test_audio_recorded_while_nothing_iterates_is_discarded(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+    loop = asyncio.get_running_loop()
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        stream = fake.streams[0]
+        stream.emit(_constant(0.25))
+        await asyncio.sleep(0)
+        loop.call_soon(stream.emit, _constant(0.5))
+        async for first in microphone:
+            break
+        stream.emit(_constant(0.75))
+        await asyncio.sleep(0)
+        loop.call_soon(stream.emit, _constant(-0.5))
+        async for second in microphone:
+            break
+
+    assert (first, second) == (_pcm(0.5), _pcm(-0.5))
+
+
+async def test_starting_a_new_iteration_ends_the_earlier_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install(monkeypatch, _FakeSoundDevice([_device("Built-in Microphone")]))
+
+    async with Microphone.open() as microphone:
+        older = asyncio.create_task(_collect(microphone))
+        await asyncio.sleep(0)
+        aiter(microphone)
+
+        assert await asyncio.wait_for(older, timeout=1) == []
+
+
 async def test_iteration_ends_when_the_microphone_closes(monkeypatch: pytest.MonkeyPatch) -> None:
     _install(monkeypatch, _FakeSoundDevice([_device("Built-in Microphone")]))
 
-    async def collect(microphone: Microphone) -> typing.List[bytes]:
-        return [frame async for frame in microphone]
-
     async with Microphone.open() as microphone:
-        task = asyncio.create_task(collect(microphone))
+        collecting = asyncio.create_task(_collect(microphone))
         await asyncio.sleep(0)
 
-    assert await asyncio.wait_for(task, timeout=1) == []
+    assert await asyncio.wait_for(collecting, timeout=1) == []
+    assert [frame async for frame in microphone] == []
+
+
+async def test_stream_that_stops_on_its_own_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone")])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open() as microphone:
+        asyncio.get_running_loop().call_soon(fake.streams[0].end)
+        with pytest.raises(RuntimeError, match="audio stream from Built-in Microphone stopped"):
+            async for _ in microphone:
+                pass
 
 
 @pytest.mark.parametrize(
-    ("device", "message"),
+    ("device", "default_input", "message"),
     [
-        (0, "Speakers has no input channels. Available input devices: 1: USB Microphone."),
-        ("Studio", "No input device matches 'Studio'.*Available input devices: 1: USB Microphone."),
+        (0, 0, "Not an input device: 'Speakers'. Available input devices: 1: USB Microphone."),
+        ("Studio", 0, "No input device matching 'Studio'. Available input devices: 1: USB Microphone."),
+        (None, None, "There is no default input device. Available input devices: 1: USB Microphone."),
     ],
 )
 async def test_unusable_device_lists_the_input_devices(
-    monkeypatch: pytest.MonkeyPatch, device: typing.Union[int, str], message: str
+    monkeypatch: pytest.MonkeyPatch,
+    device: typing.Union[int, str, None],
+    default_input: typing.Optional[int],
+    message: str,
 ) -> None:
-    _install(monkeypatch, _FakeSoundDevice([_device("Speakers", inputs=0), _device("USB Microphone")]))
+    devices = [_device("Speakers", inputs=0), _device("USB Microphone")]
+    _install(monkeypatch, _FakeSoundDevice(devices, default_input=default_input))
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         async with Microphone.open(device=device):
             pass
 
@@ -151,12 +239,28 @@ async def test_stream_is_closed_when_the_device_fails_to_start(monkeypatch: pyte
     assert fake.streams[0].closed
 
 
+def test_constructing_directly_points_to_open() -> None:
+    with pytest.raises(TypeError, match=r"Microphone\.open\(\)"):
+        Microphone()
+
+
 async def test_missing_sounddevice_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "sounddevice", None)
 
     with pytest.raises(MissingDependencyError, match=r'pip install "hume-expression-measurement\[audio\]"'):
         async with Microphone.open():
             pass
+
+
+async def test_missing_soxr_is_reported_before_the_device_opens(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone")])
+    _install(monkeypatch, fake)
+    monkeypatch.setitem(sys.modules, "soxr", None)
+
+    with pytest.raises(MissingDependencyError, match="soxr"):
+        async with Microphone.open():
+            pass
+    assert fake.streams == []
 
 
 async def test_missing_portaudio_names_the_system_package(monkeypatch: pytest.MonkeyPatch) -> None:

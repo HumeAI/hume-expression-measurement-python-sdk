@@ -239,7 +239,8 @@ from hume_expression_measurement.audio import Microphone
 async def main() -> None:
     client = AsyncExpressionMeasurementClient()
 
-    async with client.voice.connect() as socket:
+    # Opening the microphone first means a missing or busy device fails before a session starts.
+    async with Microphone.open() as microphone, client.voice.connect() as socket:
 
         async def print_measurements() -> None:
             async for message in socket:
@@ -252,27 +253,26 @@ async def main() -> None:
                     break
 
         receiver = asyncio.create_task(print_measurements())
-
-        async with Microphone.open() as microphone:
+        try:
             print(f"Recording from {microphone.device_name} for 10 seconds")
+            frames_sent = 0
+            async for frame in microphone:
+                await socket.send_audio_frame(frame)
+                frames_sent += 1
+                # 100 frames of 100 ms is 10 seconds.
+                if frames_sent == 100:
+                    break
 
-            async def send_audio() -> None:
-                async for frame in microphone:
-                    await socket.send_audio_frame(frame)
-
-            try:
-                await asyncio.wait_for(send_audio(), timeout=10)
-            except asyncio.TimeoutError:
-                pass
-
-        await socket.send_voice_session_close(SessionClose(type="session.close"))
-        await receiver
+            await socket.send_voice_session_close(SessionClose(type="session.close"))
+            await receiver
+        finally:
+            receiver.cancel()
 
 
 asyncio.run(main())
 ```
 
-The device records at its own sample rate, and the SDK converts the first channel to 16 kHz mono. An unknown device, or one with no input channels, raises a `ValueError` that lists the available input devices. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
+The device records at its own sample rate, and the SDK converts the first channel to 16 kHz mono. Each `async for` starts with live audio: audio recorded while nothing iterates the microphone is discarded, so a push-to-talk loop never sends stale audio. An unknown device, or one that is not an input device, raises a `ValueError` that lists the available input devices. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
 
 ### WAV files
 

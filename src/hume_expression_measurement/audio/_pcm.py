@@ -9,12 +9,16 @@ BYTES_PER_MS = SAMPLE_RATE * 2 // 1000
 MAX_FRAME_MS = 10_000
 
 
+def check_frame_ms(frame_ms: int) -> None:
+    if not 1 <= frame_ms <= MAX_FRAME_MS:
+        raise ValueError(f"frame_ms must be between 1 and {MAX_FRAME_MS}, got {frame_ms}.")
+
+
 class FrameBuffer:
     """Cuts a stream of 16 kHz mono s16le bytes into frames of a fixed duration."""
 
     def __init__(self, frame_ms: int) -> None:
-        if not 1 <= frame_ms <= MAX_FRAME_MS:
-            raise ValueError(f"frame_ms must be between 1 and {MAX_FRAME_MS}, got {frame_ms}.")
+        check_frame_ms(frame_ms)
         self._frame_bytes = frame_ms * BYTES_PER_MS
         self._buffer = bytearray()
 
