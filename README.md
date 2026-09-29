@@ -291,7 +291,7 @@ Frames are produced as fast as the file is read, so pace the sends for a file lo
 
 ### Other sources
 
-`Resampler` converts a stream you already have, as bytes or NumPy arrays, block by block. Pass each block to `process`, then call `flush` after the last one. `process` can return an empty result while the filter fills, and the endpoint rejects empty frames, so check before sending.
+`Resampler` converts a stream you already have, as bytes or NumPy arrays, block by block. Pass each block to `process`, then call `flush` after the last one. `process` can return an empty result while the filter fills, and the endpoint rejects empty frames, so check before sending. The endpoint also rejects frames longer than 10 seconds, so pass a long recording in blocks of about 100 ms rather than in one call, and pace the sends for a recording longer than 30 seconds.
 
 ```python
 from hume_expression_measurement.audio import Resampler

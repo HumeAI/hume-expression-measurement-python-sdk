@@ -5,7 +5,7 @@ import typing
 import numpy as np
 import numpy.typing as npt
 from ._optional import import_optional
-from ._pcm import SAMPLE_RATE
+from ._pcm import SAMPLE_RATE, check_integer
 
 SampleFormat = typing.Literal["int16", "float32", "float64"]
 
@@ -70,6 +70,7 @@ class Resampler:
     def __init__(self, *, sample_rate: int, channels: int, sample_format: SampleFormat = "int16") -> None:
         if sample_rate <= 0:
             raise ValueError(f"sample_rate must be positive, got {sample_rate}.")
+        check_integer("channels", channels)
         if channels < 1:
             raise ValueError(f"channels must be at least 1, got {channels}.")
         if sample_format not in _INPUT_DTYPES:
@@ -102,7 +103,10 @@ class Resampler:
             Signed 16-bit little-endian PCM, mono, 16 kHz. The resampler holds back up to about
             120 ms of audio as filter history, depending on the input rate, so the result can be
             shorter than the input or empty. At 8 kHz, the first 100 ms block returns nothing.
-            The realtime voice endpoint rejects empty frames, so check before sending.
+            The realtime voice endpoint rejects empty frames and frames longer than 10 seconds,
+            so check the result before sending it, and pass a long recording in blocks of about
+            100 ms rather than in one call. The endpoint accepts the first 30 seconds of audio at
+            once and then 2 seconds of audio per second, so pace the sends for a longer recording.
         """
         return self._convert(self._to_mono(audio), last=False)
 

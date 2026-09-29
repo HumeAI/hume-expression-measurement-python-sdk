@@ -1,5 +1,6 @@
 # Maintained by hand and listed in .fernignore, so SDK regeneration leaves it in place.
 
+import operator
 import typing
 
 SAMPLE_RATE = 16000
@@ -9,7 +10,15 @@ BYTES_PER_MS = SAMPLE_RATE * 2 // 1000
 MAX_FRAME_MS = 10_000
 
 
+def check_integer(name: str, value: int) -> None:
+    try:
+        operator.index(value)
+    except TypeError:
+        raise TypeError(f"{name} must be an integer, got {value!r}.") from None
+
+
 def check_frame_ms(frame_ms: int) -> None:
+    check_integer("frame_ms", frame_ms)
     if not 1 <= frame_ms <= MAX_FRAME_MS:
         raise ValueError(f"frame_ms must be between 1 and {MAX_FRAME_MS}, got {frame_ms}.")
 

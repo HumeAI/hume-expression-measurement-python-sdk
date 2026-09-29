@@ -32,6 +32,7 @@ def _write_raw_wav(
     extensible: bool = False,
     fmt_extra: bytes = b"",
     data_size: typing.Optional[int] = None,
+    after_data: bytes = b"",
 ) -> pathlib.Path:
     block_align = channels * ((bits + 7) // 8)
     # The reader ignores the byte rate, so an overflowing value is truncated to fit its field.
@@ -45,7 +46,7 @@ def _write_raw_wav(
     info = b"INFOISFT\x05\x00\x00\x00Lavf\x00"
     body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"\x00" * (len(fmt) % 2)
     body += b"LIST" + struct.pack("<I", len(info)) + info + b"\x00"
-    body += b"data" + struct.pack("<I", len(data) if data_size is None else data_size) + data
+    body += b"data" + struct.pack("<I", len(data) if data_size is None else data_size) + data + after_data
     path.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
     return path
 
@@ -121,6 +122,16 @@ def test_floating_point_samples_are_converted(tmp_path: pathlib.Path, bits: int,
     frames = list(iter_wav_frames(path))
 
     assert np.frombuffer(b"".join(frames), dtype="<i2").tolist() == [0, 8192, -16384, 32767]
+
+
+def test_chunks_after_the_data_are_not_read_as_audio(tmp_path: pathlib.Path) -> None:
+    pcm = np.arange(-800, 800, dtype="<i2").tobytes()
+    id3 = b"id3 " + struct.pack("<I", 64) + bytes(range(64))
+    path = _write_raw_wav(
+        tmp_path / "tagged.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=pcm, after_data=id3
+    )
+
+    assert b"".join(iter_wav_frames(path)) == pcm
 
 
 def test_data_of_unknown_size_is_read_to_the_end_of_the_file(tmp_path: pathlib.Path) -> None:
@@ -214,3 +225,8 @@ def test_rf64_file_is_rejected_with_a_conversion_command(tmp_path: pathlib.Path)
 def test_frame_duration_out_of_range_is_rejected_at_call_time(tmp_path: pathlib.Path, frame_ms: int) -> None:
     with pytest.raises(ValueError, match="frame_ms must be between 1 and 10000"):
         iter_wav_frames(tmp_path / "unused.wav", frame_ms=frame_ms)
+
+
+def test_frame_duration_that_is_not_an_integer_is_rejected_at_call_time(tmp_path: pathlib.Path) -> None:
+    with pytest.raises(TypeError, match="frame_ms must be an integer, got 20.0"):
+        iter_wav_frames(tmp_path / "unused.wav", frame_ms=typing.cast(typing.Any, 20.0))

@@ -1,4 +1,5 @@
 import sys
+import typing
 
 import numpy as np
 import numpy.typing as npt
@@ -110,6 +111,11 @@ def test_array_with_the_wrong_dtype_or_shape_is_rejected() -> None:
         resampler.process(np.zeros((4, 2), dtype=np.float32))
     with pytest.raises(ValueError, match=r"shaped \(frames, 2\)"):
         resampler.process(np.zeros((4, 3), dtype=np.int16))
+
+
+def test_channel_count_that_is_not_an_integer_is_rejected() -> None:
+    with pytest.raises(TypeError, match="channels must be an integer, got 2.0"):
+        Resampler(sample_rate=48000, channels=typing.cast(typing.Any, 2.0))
 
 
 def test_missing_soxr_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
