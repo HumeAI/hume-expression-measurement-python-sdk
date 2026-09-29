@@ -7,11 +7,36 @@
     "should_generate_websocket_clients": true,
     "client": {
       "class_name": "ExpressionMeasurementClient"
+    },
+    "extra_dependencies": {
+      "numpy": {
+        "version": ">=1.26",
+        "optional": true
+      },
+      "sounddevice": {
+        "version": ">=0.5,<0.6",
+        "optional": true
+      },
+      "soxr": {
+        "version": ">=1.0,<2",
+        "optional": true
+      }
+    },
+    "extra_dev_dependencies": {
+      "numpy": ">=1.26",
+      "soxr": ">=1.0,<2"
+    },
+    "extras": {
+      "audio": [
+        "numpy",
+        "sounddevice",
+        "soxr"
+      ]
     }
   },
-  "originGitCommit": "b0b3587be3c980e59f3e256637dc6bbc4a1f77f4",
+  "originGitCommit": "f52ad4112115f9e32f19fafc5b41ffd8c1c0d86c",
   "originGitCommitIsDirty": false,
   "invokedBy": "ci",
   "ciProvider": "github",
-  "sdkVersion": "0.0.112"
+  "sdkVersion": "0.0.115"
 }
