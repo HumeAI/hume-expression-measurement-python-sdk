@@ -172,8 +172,9 @@ class Microphone:
         self._lock = threading.Lock()
         # None while nothing iterates, which is what discards audio recorded between loops.
         self._queue: typing.Optional[_Queue] = None
-        # Counted when PortAudio hands a block over rather than when it reaches the queue, so
-        # blocks waiting behind a busy event loop count toward the cap too.
+        # A block counts from the moment PortAudio hands it over until it is consumed or discarded,
+        # whichever iteration it was recorded for, so blocks waiting behind a busy event loop stay
+        # within the cap even when iterations are replaced.
         self._backlog = 0
         self._max_backlog = self.device_sample_rate * _MAX_BACKLOG_SECONDS
         self._closing = False
@@ -183,9 +184,8 @@ class Microphone:
         queue: _Queue = asyncio.Queue()
         with self._lock:
             if self._queue is not None:
-                _end_iteration(self._queue, _Signal.SUPERSEDED)
+                self._end_iteration(self._queue, _Signal.SUPERSEDED)
             self._queue = None if self._finished else queue
-            self._backlog = 0
         return self._iter_frames(queue)
 
     async def _iter_frames(self, queue: _Queue) -> typing.AsyncIterator[bytes]:
@@ -198,8 +198,7 @@ class Microphone:
                     if isinstance(item, _Signal):
                         break
                     with self._lock:
-                        if self._queue is queue:
-                            self._backlog -= len(item)
+                        self._backlog -= len(item)
                     for frame in frames.push(resampler.process(item)):
                         yield frame
                 if item is _Signal.SUPERSEDED:
@@ -225,6 +224,7 @@ class Microphone:
             with self._lock:
                 if self._queue is queue:
                     self._queue = None
+                self._discard_waiting(queue)
 
     # PortAudio calls this on its own thread and reuses `indata` after it returns. Each block is
     # assigned to an iteration here, when it is recorded, because a callback waiting behind a busy
@@ -234,16 +234,41 @@ class Microphone:
             queue = self._queue
             if queue is None:
                 return
-            self._backlog += len(indata)
-            if self._backlog > self._max_backlog:
+            if self._backlog + len(indata) > self._max_backlog:
                 self._queue = None
-                self._loop.call_soon_threadsafe(_end_iteration, queue, _Signal.OVERFLOWED)
+                self._loop.call_soon_threadsafe(self._overflow, queue)
                 return
-            self._loop.call_soon_threadsafe(queue.put_nowait, indata[:, 0].copy())
+            self._backlog += len(indata)
+            self._loop.call_soon_threadsafe(self._deliver, queue, indata[:, 0].copy())
 
     # PortAudio calls this after the last `_on_block`, so the signal is queued behind every block.
     def _on_finished(self) -> None:
         self._loop.call_soon_threadsafe(self._finish)
+
+    def _deliver(self, queue: _Queue, block: npt.NDArray[np.float32]) -> None:
+        with self._lock:
+            if self._queue is queue:
+                queue.put_nowait(block)
+            else:
+                self._backlog -= len(block)
+
+    def _overflow(self, queue: _Queue) -> None:
+        with self._lock:
+            self._end_iteration(queue, _Signal.OVERFLOWED)
+
+    # Called with the lock held.
+    def _end_iteration(self, queue: _Queue, signal: _Signal) -> None:
+        # Emptied first so the iteration sees the signal next instead of yielding the audio waiting
+        # ahead of it, and so that audio's memory is released even if the loop never reads again.
+        self._discard_waiting(queue)
+        queue.put_nowait(signal)
+
+    # Called with the lock held.
+    def _discard_waiting(self, queue: _Queue) -> None:
+        while not queue.empty():
+            item = queue.get_nowait()
+            if not isinstance(item, _Signal):
+                self._backlog -= len(item)
 
     def _finish(self) -> None:
         if self._finished:
@@ -278,14 +303,6 @@ def _input_devices(sounddevice: _SoundDevice) -> str:
     if not inputs:
         return "No input devices are available."
     return "Available input devices: " + "; ".join(inputs) + "."
-
-
-def _end_iteration(queue: _Queue, signal: _Signal) -> None:
-    # Emptied first so the iteration sees the signal next instead of yielding the audio waiting
-    # ahead of it, and so that audio's memory is released even if the loop never reads again.
-    while not queue.empty():
-        queue.get_nowait()
-    queue.put_nowait(signal)
 
 
 def _stop_and_close(stream: _InputStream) -> None:

@@ -254,6 +254,54 @@ async def test_iteration_ends_when_stopping_the_stream_fails(monkeypatch: pytest
     assert fake.streams[0].closed
 
 
+async def test_replacing_iterations_while_the_event_loop_is_busy_keeps_the_backlog_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        stream = fake.streams[0]
+        aiter(microphone)
+        for _ in range(600):
+            stream.emit(_constant(0.25))
+        frames = aiter(microphone)
+        for _ in range(600):
+            stream.emit(_constant(0.5))
+
+        with pytest.raises(RuntimeError, match="More than 10 seconds of audio"):
+            await anext(frames)
+
+
+@pytest.mark.parametrize("end", ["break", "supersede"])
+async def test_audio_left_behind_by_ended_iterations_does_not_count_toward_the_cap(
+    monkeypatch: pytest.MonkeyPatch, end: str
+) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+    loop = asyncio.get_running_loop()
+
+    def emit_one_second() -> None:
+        for _ in range(100):
+            fake.streams[0].emit(_constant(0.25))
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        # Each iteration leaves 0.99 seconds unread, so 20 of them would exceed the cap if kept.
+        for _ in range(20):
+            if end == "break":
+                loop.call_soon(emit_one_second)
+                async for frame in microphone:
+                    break
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
+            else:
+                frames = aiter(microphone)
+                emit_one_second()
+                await asyncio.sleep(0)
+                frame = await anext(frames)
+            assert frame == _pcm(0.25)
+
+
 async def test_stream_that_stops_on_its_own_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeSoundDevice([_device("Built-in Microphone")])
     _install(monkeypatch, fake)
