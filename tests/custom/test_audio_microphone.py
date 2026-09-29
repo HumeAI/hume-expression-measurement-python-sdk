@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import re
 import sys
+import threading
 import time
 import types
 import typing
@@ -40,7 +41,10 @@ class _FakeStream:
         self._active = True
 
     def emit(self, block: npt.NDArray[np.float32]) -> None:
-        self.settings["callback"](block.reshape(-1, 1), len(block), None, None)
+        buffer = block.reshape(-1, 1).copy()
+        self.settings["callback"](buffer, len(block), None, None)
+        # PortAudio reuses the buffer for the next block.
+        buffer.fill(np.nan)
 
     def end(self) -> None:
         """Stops the stream the way PortAudio does when the device goes away."""
@@ -49,8 +53,9 @@ class _FakeStream:
             self.settings["finished_callback"]()
 
     def stop(self) -> None:
+        # sounddevice ignores the error when PortAudio fails to stop, and the stream never reports its end.
         if self._fail_on_stop:
-            raise _PortAudioError("Error stopping stream")
+            return
         self.stopped_while_starting = self._starting
         self.end()
         self.stopped = True
@@ -121,8 +126,8 @@ def _tone(seconds: float = 1.0) -> npt.NDArray[np.float32]:
     return (0.5 * np.sin(2 * np.pi * 1000 * t)).astype(np.float32)
 
 
-def _constant(value: float) -> npt.NDArray[np.float32]:
-    return np.full(160, value, dtype=np.float32)
+def _constant(value: float, samples: int = 160) -> npt.NDArray[np.float32]:
+    return np.full(samples, value, dtype=np.float32)
 
 
 def _pcm(value: float) -> bytes:
@@ -131,6 +136,10 @@ def _pcm(value: float) -> bytes:
 
 async def _collect(microphone: Microphone) -> typing.List[bytes]:
     return [frame async for frame in microphone]
+
+
+async def _next_frame(frames: typing.AsyncIterator[bytes]) -> bytes:
+    return await asyncio.wait_for(anext(frames), timeout=1)
 
 
 async def test_microphone_yields_16k_frames_of_the_recorded_audio(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -142,7 +151,7 @@ async def test_microphone_yields_16k_frames_of_the_recorded_audio(monkeypatch: p
         frames = aiter(microphone)
         for block in np.split(_tone(), 100):
             fake.streams[0].emit(block)
-        received = [await anext(frames) for _ in range(9)]
+        received = [await _next_frame(frames) for _ in range(9)]
 
     assert [len(frame) for frame in received] == [3200] * 9
     out = np.frombuffer(b"".join(received), dtype="<i2")
@@ -151,6 +160,25 @@ async def test_microphone_yields_16k_frames_of_the_recorded_audio(monkeypatch: p
     stream = fake.streams[0]
     assert (stream.settings["samplerate"], stream.settings["channels"]) == (48000, 1)
     assert stream.stopped and stream.closed
+
+
+async def test_audio_recorded_on_another_thread_wakes_a_waiting_iteration(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        frames = aiter(microphone)
+        # Recorded after the event loop has gone idle waiting for the frame, the way PortAudio's
+        # thread delivers audio.
+        recorder = threading.Timer(0.05, fake.streams[0].emit, args=(_constant(0.25),))
+        started = time.monotonic()
+        recorder.start()
+
+        assert await asyncio.wait_for(anext(frames), timeout=2) == _pcm(0.25)
+        # A wakeup that does not wake the idle event loop still runs once the timeout fires, so
+        # only the delay shows it.
+        assert time.monotonic() - started < 1
+        recorder.join()
 
 
 async def test_closing_yields_all_recorded_audio_before_iteration_ends(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -168,7 +196,7 @@ async def test_closing_yields_all_recorded_audio_before_iteration_ends(monkeypat
     assert abs(sum(len(frame) for frame in frames) - int(0.82 * 32000)) <= 2
 
 
-async def test_audio_recorded_while_nothing_iterates_is_discarded(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_an_iteration_yields_only_audio_recorded_after_it_starts(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
     _install(monkeypatch, fake)
     loop = asyncio.get_running_loop()
@@ -176,32 +204,13 @@ async def test_audio_recorded_while_nothing_iterates_is_discarded(monkeypatch: p
     async with Microphone.open(frame_ms=10) as microphone:
         stream = fake.streams[0]
         stream.emit(_constant(0.25))
-        await asyncio.sleep(0)
         loop.call_soon(stream.emit, _constant(0.5))
-        async for first in microphone:
-            break
+        first = await _next_frame(aiter(microphone))
         stream.emit(_constant(0.75))
-        await asyncio.sleep(0)
         loop.call_soon(stream.emit, _constant(-0.5))
-        async for second in microphone:
-            break
+        second = await _next_frame(aiter(microphone))
 
     assert (first, second) == (_pcm(0.5), _pcm(-0.5))
-
-
-async def test_audio_recorded_before_iteration_is_discarded_while_the_event_loop_is_busy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
-    _install(monkeypatch, fake)
-
-    async with Microphone.open(frame_ms=10) as microphone:
-        stream = fake.streams[0]
-        stream.emit(_constant(0.25))
-        frames = aiter(microphone)
-        stream.emit(_constant(0.5))
-
-        assert await anext(frames) == _pcm(0.5)
 
 
 async def test_starting_a_new_iteration_ends_the_earlier_one(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -221,13 +230,43 @@ async def test_a_superseded_iteration_ends_without_yielding_its_waiting_audio(mo
 
     async with Microphone.open(frame_ms=10) as microphone:
         older = aiter(microphone)
-        for _ in range(3):
-            fake.streams[0].emit(_constant(0.25))
-        await asyncio.sleep(0)
+        # A 30 ms block converts to three frames, so two are still unread when the new iteration starts.
+        fake.streams[0].emit(_constant(0.25, 480))
+        fake.streams[0].emit(_constant(0.25))
+        assert await _next_frame(older) == _pcm(0.25)
         aiter(microphone)
 
         with pytest.raises(StopAsyncIteration):
-            await anext(older)
+            await _next_frame(older)
+
+
+async def test_reading_one_iteration_from_two_tasks_at_once_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        frames = aiter(microphone)
+        waiting = asyncio.ensure_future(anext(frames))
+        await asyncio.sleep(0)
+
+        with pytest.raises(RuntimeError, match="Another task is already waiting for a frame from Built-in Microphone"):
+            await _next_frame(frames)
+        fake.streams[0].emit(_constant(0.25))
+
+        assert await asyncio.wait_for(waiting, timeout=1) == _pcm(0.25)
+
+
+async def test_a_cancelled_read_leaves_the_iteration_readable(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        frames = aiter(microphone)
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(anext(frames), timeout=0.01)
+        fake.streams[0].emit(_constant(0.25))
+
+        assert await _next_frame(frames) == _pcm(0.25)
 
 
 async def test_iteration_ends_when_the_microphone_closes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -238,44 +277,23 @@ async def test_iteration_ends_when_the_microphone_closes(monkeypatch: pytest.Mon
         await asyncio.sleep(0)
 
     assert await asyncio.wait_for(collecting, timeout=1) == []
-    assert [frame async for frame in microphone] == []
+    assert await asyncio.wait_for(_collect(microphone), timeout=1) == []
 
 
 async def test_iteration_ends_when_stopping_the_stream_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeSoundDevice([_device("Built-in Microphone")], fail_on_stop=True)
     _install(monkeypatch, fake)
 
-    with pytest.raises(_PortAudioError, match="Error stopping stream"):
-        async with Microphone.open() as microphone:
-            collecting = asyncio.create_task(_collect(microphone))
-            await asyncio.sleep(0)
+    async with Microphone.open() as microphone:
+        collecting = asyncio.create_task(_collect(microphone))
+        await asyncio.sleep(0)
 
     assert await asyncio.wait_for(collecting, timeout=1) == []
     assert fake.streams[0].closed
 
 
-async def test_replacing_iterations_while_the_event_loop_is_busy_keeps_the_backlog_cap(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
-    _install(monkeypatch, fake)
-
-    async with Microphone.open(frame_ms=10) as microphone:
-        stream = fake.streams[0]
-        aiter(microphone)
-        for _ in range(600):
-            stream.emit(_constant(0.25))
-        frames = aiter(microphone)
-        for _ in range(600):
-            stream.emit(_constant(0.5))
-
-        with pytest.raises(RuntimeError, match="More than 10 seconds of audio"):
-            await anext(frames)
-
-
-@pytest.mark.parametrize("end", ["break", "supersede"])
 async def test_audio_left_behind_by_ended_iterations_does_not_count_toward_the_cap(
-    monkeypatch: pytest.MonkeyPatch, end: str
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
     _install(monkeypatch, fake)
@@ -288,18 +306,8 @@ async def test_audio_left_behind_by_ended_iterations_does_not_count_toward_the_c
     async with Microphone.open(frame_ms=10) as microphone:
         # Each iteration leaves 0.99 seconds unread, so 20 of them would exceed the cap if kept.
         for _ in range(20):
-            if end == "break":
-                loop.call_soon(emit_one_second)
-                async for frame in microphone:
-                    break
-                await asyncio.sleep(0)
-                await asyncio.sleep(0)
-            else:
-                frames = aiter(microphone)
-                emit_one_second()
-                await asyncio.sleep(0)
-                frame = await anext(frames)
-            assert frame == _pcm(0.25)
+            loop.call_soon(emit_one_second)
+            assert await _next_frame(aiter(microphone)) == _pcm(0.25)
 
 
 async def test_stream_that_stops_on_its_own_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -309,35 +317,50 @@ async def test_stream_that_stops_on_its_own_raises(monkeypatch: pytest.MonkeyPat
     async with Microphone.open() as microphone:
         asyncio.get_running_loop().call_soon(fake.streams[0].end)
         with pytest.raises(RuntimeError, match="audio stream from Built-in Microphone stopped"):
-            async for _ in microphone:
-                pass
+            await asyncio.wait_for(_collect(microphone), timeout=1)
 
 
 async def test_falling_more_than_10_seconds_behind_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
     _install(monkeypatch, fake)
+    loop = asyncio.get_running_loop()
 
     async with Microphone.open(frame_ms=10) as microphone:
         stream = fake.streams[0]
         frames = aiter(microphone)
-        for _ in range(1000):
+        # Exactly 10 seconds, which is within the cap: a 30 ms block that converts to three
+        # frames, then 997 blocks of 10 ms.
+        stream.emit(_constant(0.25, 480))
+        for _ in range(997):
             stream.emit(_constant(0.25))
-        await asyncio.sleep(0)
-        assert await anext(frames) == _pcm(0.25)
-        for _ in range(2):
+        assert await _next_frame(frames) == _pcm(0.25)
+        for _ in range(10):
             stream.emit(_constant(0.25))
-        await asyncio.sleep(0)
 
+        # Raised even though two frames of the 30 ms block are still unread.
         with pytest.raises(RuntimeError, match="More than 10 seconds of audio from Built-in Microphone"):
-            await anext(frames)
+            await _next_frame(frames)
+        with pytest.raises(StopAsyncIteration):
+            await _next_frame(frames)
         stream.emit(_constant(0.5))
-        await asyncio.sleep(0)
-        loop = asyncio.get_running_loop()
         loop.call_soon(stream.emit, _constant(-0.5))
-        async for frame in microphone:
-            break
+        frame = await _next_frame(aiter(microphone))
 
     assert frame == _pcm(-0.5)
+
+
+async def test_falling_behind_with_frames_shorter_than_blocks_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        frames = aiter(microphone)
+        # Each 100 ms block converts to ten frames and the loop reads one frame per block, so it
+        # falls another 90 ms behind with every block.
+        with pytest.raises(RuntimeError, match="More than 10 seconds of audio"):
+            for _ in range(200):
+                fake.streams[0].emit(_constant(0.25, 1600))
+                await _next_frame(frames)
 
 
 @pytest.mark.parametrize(
