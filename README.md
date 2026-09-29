@@ -217,7 +217,7 @@ asyncio.run(main())
 pip install "hume-expression-measurement[audio]"
 ```
 
-The extra installs numpy, sounddevice, and soxr. soxr is licensed under the LGPL 2.1 or later and is installed only with this extra. On Linux, sounddevice also needs the PortAudio library, for example `sudo apt-get install libportaudio2` on Debian and Ubuntu. Importing `hume_expression_measurement.audio` without the extra raises `MissingDependencyError`, whose message gives the install command.
+The extra installs numpy, sounddevice, and soxr. soxr is licensed under the LGPL 2.1 or later and is installed only with this extra. On Linux, sounddevice also needs the PortAudio library, for example `sudo apt-get install libportaudio2` on Debian and Ubuntu. If the extra is missing, importing `hume_expression_measurement.audio` or calling a helper raises `MissingDependencyError`, whose message gives the install command.
 
 ### Microphone
 
@@ -276,7 +276,7 @@ The device records at its own sample rate, and the SDK converts the first channe
 
 ### WAV files
 
-`iter_wav_frames` reads 8, 16, 24, or 32-bit PCM WAV at any sample rate and channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#voice-1):
+`iter_wav_frames` reads 8, 16, 24, or 32-bit PCM WAV at any sample rate and channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
 
 ```python
 from hume_expression_measurement.audio import iter_wav_frames

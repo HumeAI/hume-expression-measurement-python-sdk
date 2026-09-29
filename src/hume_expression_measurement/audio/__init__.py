@@ -7,7 +7,12 @@ Helpers that turn audio into frames for the realtime voice endpoint, which accep
 Requires the audio extra: pip install "hume-expression-measurement[audio]"
 """
 
-from ._optional import MissingDependencyError
+from ._optional import MissingDependencyError, import_optional
+
+# Every helper module imports numpy at load time, so check once here to raise the error that
+# names the install command.
+import_optional("numpy")
+
 from .microphone import Microphone
 from .resampler import Resampler, SampleFormat
 from .wav import iter_wav_frames

@@ -26,9 +26,8 @@ def import_optional(name: str) -> types.ModuleType:
     """
     Imports an optional library by name.
 
-    soxr and sounddevice ship no type information, and the SDK is type-checked without the audio
-    extra installed, so an import statement for either would fail the check. Callers cast the
-    returned module to a Protocol that lists the calls they make.
+    soxr and sounddevice ship no type information, so mypy rejects an import statement for either.
+    Callers cast the returned module to a Protocol that lists the calls they make.
     """
     try:
         return importlib.import_module(name)

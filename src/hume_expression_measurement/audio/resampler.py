@@ -2,14 +2,10 @@
 
 import typing
 
-from ._optional import import_optional, missing_dependency
+import numpy as np
+import numpy.typing as npt
+from ._optional import import_optional
 from ._pcm import SAMPLE_RATE
-
-try:
-    import numpy as np
-    import numpy.typing as npt
-except ImportError as err:
-    raise missing_dependency("numpy") from err
 
 SampleFormat = typing.Literal["int16", "float32"]
 
