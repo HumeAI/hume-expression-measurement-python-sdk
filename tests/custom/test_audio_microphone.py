@@ -184,6 +184,21 @@ async def test_audio_recorded_while_nothing_iterates_is_discarded(monkeypatch: p
     assert (first, second) == (_pcm(0.5), _pcm(-0.5))
 
 
+async def test_audio_recorded_before_iteration_is_discarded_while_the_event_loop_is_busy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        stream = fake.streams[0]
+        stream.emit(_constant(0.25))
+        frames = aiter(microphone)
+        stream.emit(_constant(0.5))
+
+        assert await anext(frames) == _pcm(0.5)
+
+
 async def test_starting_a_new_iteration_ends_the_earlier_one(monkeypatch: pytest.MonkeyPatch) -> None:
     _install(monkeypatch, _FakeSoundDevice([_device("Built-in Microphone")]))
 

@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import enum
+import threading
 import typing
 
 import numpy as np
@@ -164,19 +165,24 @@ class Microphone:
         self.device_sample_rate = int(info["default_samplerate"])
         self._frame_ms = frame_ms
         self._loop = asyncio.get_running_loop()
+        # Guards `_queue` and `_backlog`, which PortAudio's thread reads for every block.
+        self._lock = threading.Lock()
         # None while nothing iterates, which is what discards audio recorded between loops.
         self._queue: typing.Optional[_Queue] = None
+        # Counted when PortAudio hands a block over rather than when it reaches the queue, so
+        # blocks waiting behind a busy event loop count toward the cap too.
         self._backlog = 0
         self._max_backlog = self.device_sample_rate * _MAX_BACKLOG_SECONDS
         self._closing = False
         self._finished = False
 
     def __aiter__(self) -> typing.AsyncIterator[bytes]:
-        if self._queue is not None:
-            self._queue.put_nowait(_Signal.SUPERSEDED)
         queue: _Queue = asyncio.Queue()
-        self._queue = None if self._finished else queue
-        self._backlog = 0
+        with self._lock:
+            if self._queue is not None:
+                self._queue.put_nowait(_Signal.SUPERSEDED)
+            self._queue = None if self._finished else queue
+            self._backlog = 0
         return self._iter_frames(queue)
 
     async def _iter_frames(self, queue: _Queue) -> typing.AsyncIterator[bytes]:
@@ -188,8 +194,9 @@ class Microphone:
                     item = await queue.get()
                     if isinstance(item, _Signal):
                         break
-                    if self._queue is queue:
-                        self._backlog -= len(item)
+                    with self._lock:
+                        if self._queue is queue:
+                            self._backlog -= len(item)
                     for frame in frames.push(resampler.process(item)):
                         yield frame
                 if item is _Signal.SUPERSEDED:
@@ -212,37 +219,43 @@ class Microphone:
         finally:
             # A loop exited with `break` reaches here only once the event loop finalizes the
             # generator, and by then a newer `async for` may own the queue.
-            if self._queue is queue:
-                self._queue = None
+            with self._lock:
+                if self._queue is queue:
+                    self._queue = None
 
-    # PortAudio calls this on its own thread and reuses `indata` after it returns.
+    # PortAudio calls this on its own thread and reuses `indata` after it returns. Each block is
+    # assigned to an iteration here, when it is recorded, because a callback waiting behind a busy
+    # event loop would otherwise reach whichever `async for` is current once it finally runs.
     def _on_block(self, indata: npt.NDArray[np.float32], _frames: int, _time: typing.Any, _status: typing.Any) -> None:
-        self._loop.call_soon_threadsafe(self._receive, indata[:, 0].copy())
+        with self._lock:
+            queue = self._queue
+            if queue is None:
+                return
+            self._backlog += len(indata)
+            if self._backlog > self._max_backlog:
+                self._queue = None
+                self._loop.call_soon_threadsafe(self._overflow, queue)
+                return
+            self._loop.call_soon_threadsafe(queue.put_nowait, indata[:, 0].copy())
 
     # PortAudio calls this after the last `_on_block`, so the signal is queued behind every block.
     def _on_finished(self) -> None:
         self._loop.call_soon_threadsafe(self._finish)
 
-    def _receive(self, block: npt.NDArray[np.float32]) -> None:
-        queue = self._queue
-        if queue is None:
-            return
-        self._backlog += len(block)
-        if self._backlog <= self._max_backlog:
-            queue.put_nowait(block)
-            return
+    def _overflow(self, queue: _Queue) -> None:
         # Emptied so the backlog's memory is released even if the loop never reads again.
         while not queue.empty():
             queue.get_nowait()
         queue.put_nowait(_Signal.OVERFLOWED)
-        self._queue = None
 
     def _finish(self) -> None:
         if self._finished:
             return
         self._finished = True
-        if self._queue is not None:
-            self._queue.put_nowait(_Signal.FINISHED)
+        with self._lock:
+            queue = self._queue
+        if queue is not None:
+            queue.put_nowait(_Signal.FINISHED)
 
 
 def _find_input_device(device: typing.Union[int, str, None]) -> typing.Tuple[_SoundDevice, _DeviceInfo]:
