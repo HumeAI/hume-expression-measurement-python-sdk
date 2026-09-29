@@ -132,11 +132,13 @@ class Microphone:
         check_frame_ms(frame_ms)
         # Loaded here so a missing soxr is reported before recording rather than at the first `async for`.
         import_optional("soxr")
-        sounddevice, info = await asyncio.to_thread(_find_input_device, device)
+        # PortAudio is called directly rather than through asyncio.to_thread. Cancelling a task
+        # does not stop its worker thread, so a cancelled open could leave a stream open or stop
+        # it while it is still starting, and PortAudio does not allow overlapping calls on a stream.
+        sounddevice, info = _find_input_device(device)
         microphone = cls.__new__(cls)
         microphone._setup(info, frame_ms)
-        stream = await asyncio.to_thread(
-            sounddevice.InputStream,
+        stream = sounddevice.InputStream(
             samplerate=microphone.device_sample_rate,
             channels=1,
             dtype="float32",
@@ -145,12 +147,13 @@ class Microphone:
             finished_callback=microphone._on_finished,
         )
         try:
-            await asyncio.to_thread(stream.start)
+            stream.start()
             yield microphone
         finally:
             microphone._closing = True
-            await asyncio.to_thread(_stop_and_close, stream)
-            microphone._finish()
+            _stop_and_close(stream)
+            # Scheduled so it runs after the blocks PortAudio handed to the event loop before stopping.
+            microphone._loop.call_soon(microphone._finish)
 
     def _setup(self, info: _DeviceInfo, frame_ms: int) -> None:
         self.device_name = info["name"]

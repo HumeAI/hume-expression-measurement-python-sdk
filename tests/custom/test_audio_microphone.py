@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import re
 import sys
+import time
 import types
 import typing
 
@@ -19,16 +20,22 @@ class _PortAudioError(Exception):
 class _FakeStream:
     """Delivers audio only when a test calls `emit`, on the calling thread."""
 
-    def __init__(self, fail_on_start: bool, **settings: typing.Any) -> None:
+    def __init__(self, fail_on_start: bool, start_seconds: float, **settings: typing.Any) -> None:
         self.settings = settings
         self.stopped = False
+        self.stopped_while_starting = False
         self.closed = False
         self._fail_on_start = fail_on_start
+        self._start_seconds = start_seconds
+        self._starting = False
         self._active = False
 
     def start(self) -> None:
         if self._fail_on_start:
             raise _PortAudioError("Device unavailable")
+        self._starting = True
+        time.sleep(self._start_seconds)
+        self._starting = False
         self._active = True
 
     def emit(self, block: npt.NDArray[np.float32]) -> None:
@@ -41,6 +48,7 @@ class _FakeStream:
             self.settings["finished_callback"]()
 
     def stop(self) -> None:
+        self.stopped_while_starting = self._starting
         self.end()
         self.stopped = True
 
@@ -58,11 +66,13 @@ class _FakeSoundDevice:
         devices: typing.List[typing.Dict[str, typing.Any]],
         default_input: typing.Optional[int] = 0,
         fail_on_start: bool = False,
+        start_seconds: float = 0.0,
     ) -> None:
         self.devices = devices
         self.streams: typing.List[_FakeStream] = []
         self._default_input = default_input
         self._fail_on_start = fail_on_start
+        self._start_seconds = start_seconds
 
     def query_devices(
         self, device: typing.Union[int, str, None] = None, kind: typing.Optional[str] = None
@@ -88,7 +98,7 @@ class _FakeSoundDevice:
         return info
 
     def InputStream(self, **settings: typing.Any) -> _FakeStream:
-        stream = _FakeStream(self._fail_on_start, **settings)
+        stream = _FakeStream(self._fail_on_start, self._start_seconds, **settings)
         self.streams.append(stream)
         return stream
 
@@ -237,6 +247,24 @@ async def test_stream_is_closed_when_the_device_fails_to_start(monkeypatch: pyte
         async with Microphone.open():
             pass
     assert fake.streams[0].closed
+
+
+async def test_cancelling_while_the_stream_starts_stops_it_once_start_returns(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone")], start_seconds=0.2)
+    _install(monkeypatch, fake)
+
+    async def record() -> None:
+        async with Microphone.open():
+            await asyncio.sleep(10)
+
+    recording = asyncio.create_task(record())
+    asyncio.get_running_loop().call_later(0.05, recording.cancel)
+
+    with pytest.raises(asyncio.CancelledError):
+        await recording
+    stream = fake.streams[0]
+    assert not stream.stopped_while_starting
+    assert stream.stopped and stream.closed
 
 
 def test_constructing_directly_points_to_open() -> None:
