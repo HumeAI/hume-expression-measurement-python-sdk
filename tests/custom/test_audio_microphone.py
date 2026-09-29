@@ -20,12 +20,13 @@ class _PortAudioError(Exception):
 class _FakeStream:
     """Delivers audio only when a test calls `emit`, on the calling thread."""
 
-    def __init__(self, fail_on_start: bool, start_seconds: float, **settings: typing.Any) -> None:
+    def __init__(self, fail_on_start: bool, fail_on_stop: bool, start_seconds: float, **settings: typing.Any) -> None:
         self.settings = settings
         self.stopped = False
         self.stopped_while_starting = False
         self.closed = False
         self._fail_on_start = fail_on_start
+        self._fail_on_stop = fail_on_stop
         self._start_seconds = start_seconds
         self._starting = False
         self._active = False
@@ -48,6 +49,8 @@ class _FakeStream:
             self.settings["finished_callback"]()
 
     def stop(self) -> None:
+        if self._fail_on_stop:
+            raise _PortAudioError("Error stopping stream")
         self.stopped_while_starting = self._starting
         self.end()
         self.stopped = True
@@ -66,12 +69,14 @@ class _FakeSoundDevice:
         devices: typing.List[typing.Dict[str, typing.Any]],
         default_input: typing.Optional[int] = 0,
         fail_on_start: bool = False,
+        fail_on_stop: bool = False,
         start_seconds: float = 0.0,
     ) -> None:
         self.devices = devices
         self.streams: typing.List[_FakeStream] = []
         self._default_input = default_input
         self._fail_on_start = fail_on_start
+        self._fail_on_stop = fail_on_stop
         self._start_seconds = start_seconds
 
     def query_devices(
@@ -98,7 +103,7 @@ class _FakeSoundDevice:
         return info
 
     def InputStream(self, **settings: typing.Any) -> _FakeStream:
-        stream = _FakeStream(self._fail_on_start, self._start_seconds, **settings)
+        stream = _FakeStream(self._fail_on_start, self._fail_on_stop, self._start_seconds, **settings)
         self.streams.append(stream)
         return stream
 
@@ -219,6 +224,19 @@ async def test_iteration_ends_when_the_microphone_closes(monkeypatch: pytest.Mon
 
     assert await asyncio.wait_for(collecting, timeout=1) == []
     assert [frame async for frame in microphone] == []
+
+
+async def test_iteration_ends_when_stopping_the_stream_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone")], fail_on_stop=True)
+    _install(monkeypatch, fake)
+
+    with pytest.raises(_PortAudioError, match="Error stopping stream"):
+        async with Microphone.open() as microphone:
+            collecting = asyncio.create_task(_collect(microphone))
+            await asyncio.sleep(0)
+
+    assert await asyncio.wait_for(collecting, timeout=1) == []
+    assert fake.streams[0].closed
 
 
 async def test_stream_that_stops_on_its_own_raises(monkeypatch: pytest.MonkeyPatch) -> None:

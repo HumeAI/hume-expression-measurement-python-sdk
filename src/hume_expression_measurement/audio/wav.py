@@ -20,6 +20,9 @@ _SUBFORMAT_GUID_SUFFIX = bytes.fromhex("000000001000800000aa00389b71")
 _UNKNOWN_SIZE = 0xFFFFFFFF
 _SAMPLE_WIDTHS = {_PCM: (1, 2, 3, 4), _IEEE_FLOAT: (4, 8)}
 _SKIP_READ_BYTES = 64 * 1024
+# The read size follows from the header's sample rate and channel count, so a crafted header
+# could otherwise request an enormous read.
+_MAX_READ_BYTES = 1024 * 1024
 # The extensible header is all the reader parses. The rest of a longer fmt chunk is skipped,
 # because its size comes from the file and can be arbitrarily large.
 _FMT_READ_BYTES = 40
@@ -37,8 +40,9 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     Reads a WAV file and yields it as frames ready to send with `send_audio_frame`.
 
     The audio is converted to signed 16-bit little-endian PCM, mono, 16 kHz, whatever the file's
-    sample rate and channel count. Integer PCM (8, 16, 24 or 32-bit) and floating point (32 or
-    64-bit) are supported, with either the basic or the extensible WAV header. Every frame holds
+    sample rate and channel count. Integer PCM (8, 16, 24 or 32-bit, and narrower depths such as
+    12 or 20-bit stored in those widths) and floating point (32 or 64-bit) are supported, with
+    either the basic or the extensible WAV header. Every frame holds
     `frame_ms` milliseconds of audio except the last, which holds what remains. No frame is empty.
 
     A file that ends partway through a sample, such as an interrupted recording, is read up to
@@ -86,7 +90,8 @@ def _read_frames(path: str, frame_ms: int, frames: FrameBuffer) -> typing.Iterat
         fmt, data_size = _read_header(file, path)
         resampler = Resampler(sample_rate=fmt.sample_rate, channels=fmt.channels, sample_format="float32")
         frame_bytes = fmt.sample_width * fmt.channels
-        block_bytes = max(1, fmt.sample_rate * frame_ms // 1000) * frame_bytes
+        samples_per_read = min(max(1, fmt.sample_rate * frame_ms // 1000), max(1, _MAX_READ_BYTES // frame_bytes))
+        block_bytes = samples_per_read * frame_bytes
         remaining = data_size
         while True:
             data = file.read(block_bytes if remaining is None else min(block_bytes, remaining))
@@ -150,10 +155,12 @@ def _parse_format(body: bytes, path: str) -> _Format:
         if len(body) < 40 or body[26:40] != _SUBFORMAT_GUID_SUFFIX:
             raise _unsupported(path, "unknown extensible subformat")
         tag = struct.unpack("<H", body[24:26])[0]
-    sample_width = (bits + 7) // 8
     if tag not in _SAMPLE_WIDTHS:
         raise _unsupported(path, f"format tag 0x{tag:04X} is compressed or unknown")
-    if sample_width not in _SAMPLE_WIDTHS[tag]:
+    # Integer samples narrower than their container, such as 12-bit audio in 16 bits, fill its
+    # high bits and leave the low bits zero, so they decode correctly at the container's width.
+    sample_width = (bits + 7) // 8
+    if sample_width not in _SAMPLE_WIDTHS[tag] or (tag == _IEEE_FLOAT and bits != sample_width * 8):
         raise _unsupported(path, f"{bits}-bit {'PCM' if tag == _PCM else 'floating point'}")
     if channels < 1 or sample_rate < 1 or block_align != sample_width * channels:
         raise _unsupported(path, "the fmt chunk is inconsistent")

@@ -156,9 +156,12 @@ class Microphone:
             yield microphone
         finally:
             microphone._closing = True
-            _stop_and_close(stream)
-            # Scheduled so it runs after the blocks PortAudio handed to the event loop before stopping.
-            microphone._loop.call_soon(microphone._finish)
+            try:
+                _stop_and_close(stream)
+            finally:
+                # Scheduled so it runs after the blocks PortAudio handed to the event loop before
+                # stopping, and even when stopping fails, so no `async for` is left waiting.
+                microphone._loop.call_soon(microphone._finish)
 
     def _setup(self, info: _DeviceInfo, frame_ms: int) -> None:
         self.device_name = info["name"]

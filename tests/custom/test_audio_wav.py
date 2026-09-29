@@ -2,6 +2,7 @@ import os
 import pathlib
 import struct
 import threading
+import tracemalloc
 import typing
 import wave
 
@@ -32,10 +33,10 @@ def _write_raw_wav(
     fmt_extra: bytes = b"",
     data_size: typing.Optional[int] = None,
 ) -> pathlib.Path:
-    block_align = channels * bits // 8
-    fmt = struct.pack(
-        "<HHIIHH", 0xFFFE if extensible else tag, channels, sample_rate, sample_rate * block_align, block_align, bits
-    )
+    block_align = channels * ((bits + 7) // 8)
+    # The reader ignores the byte rate, so an overflowing value is truncated to fit its field.
+    byte_rate = (sample_rate * block_align) & 0xFFFFFFFF
+    fmt = struct.pack("<HHIIHH", 0xFFFE if extensible else tag, channels, sample_rate, byte_rate, block_align, bits)
     if extensible:
         subformat = struct.pack("<H", tag) + bytes.fromhex("000000001000800000aa00389b71")
         fmt += struct.pack("<HHI", 22, bits, 0) + subformat
@@ -154,6 +155,42 @@ def test_file_ending_partway_through_a_sample_is_read_to_the_last_whole_sample(t
     path.write_bytes(path.read_bytes()[:-1])
 
     assert b"".join(iter_wav_frames(path)) == pcm[:4]
+
+
+def test_12_bit_samples_are_read_from_the_high_bits_of_16_bit_containers(tmp_path: pathlib.Path) -> None:
+    samples = np.array([0, 1024, -2048, 2047], dtype="<i2")
+    path = _write_raw_wav(
+        tmp_path / "12-bit.wav", tag=1, sample_rate=16000, channels=1, bits=12, data=(samples << 4).tobytes()
+    )
+
+    assert np.frombuffer(b"".join(iter_wav_frames(path)), dtype="<i2").tolist() == [0, 16384, -32768, 32752]
+
+
+def test_floating_point_depth_other_than_32_or_64_bits_is_rejected(tmp_path: pathlib.Path) -> None:
+    path = _write_raw_wav(tmp_path / "float.wav", tag=3, sample_rate=16000, channels=1, bits=31, data=bytes(16))
+
+    with pytest.raises(ValueError, match="31-bit floating point"):
+        next(iter_wav_frames(path))
+
+
+def test_header_declaring_an_enormous_sample_rate_is_read_in_bounded_pieces(tmp_path: pathlib.Path) -> None:
+    path = _write_raw_wav(
+        tmp_path / "crafted.wav",
+        tag=1,
+        sample_rate=0xFFFFFFFF,
+        channels=32767,
+        bits=16,
+        data=bytes(32767 * 2 * 4),
+        data_size=0xFFFFFFFF,
+    )
+
+    tracemalloc.start()
+    try:
+        assert list(iter_wav_frames(path)) == []
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert peak < 64 * 1024 * 1024
 
 
 def test_compressed_wav_is_rejected_with_a_conversion_command(tmp_path: pathlib.Path) -> None:
