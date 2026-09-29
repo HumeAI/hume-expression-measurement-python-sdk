@@ -7,11 +7,12 @@ import numpy.typing as npt
 from ._optional import import_optional
 from ._pcm import SAMPLE_RATE
 
-SampleFormat = typing.Literal["int16", "float32"]
+SampleFormat = typing.Literal["int16", "float32", "float64"]
 
 _INPUT_DTYPES: typing.Dict[str, "np.dtype[typing.Any]"] = {
     "int16": np.dtype("<i2"),
     "float32": np.dtype("<f4"),
+    "float64": np.dtype("<f8"),
 }
 
 
@@ -47,10 +48,10 @@ class Resampler:
     channels : int
         Number of channels in the input.
 
-    sample_format : typing.Literal["int16", "float32"]
-        Encoding of the input. "int16" is signed 16-bit PCM and "float32" is 32-bit floating
-        point with full scale at -1.0 and 1.0. Bytes are read as little-endian, and a NumPy
-        array must have the matching dtype.
+    sample_format : typing.Literal["int16", "float32", "float64"]
+        Encoding of the input. "int16" is signed 16-bit PCM, and "float32" and "float64" are
+        floating point with full scale at -1.0 and 1.0. Bytes are read as little-endian, and a
+        NumPy array must have the matching dtype. `soundfile.read()` returns float64 by default.
 
     Examples
     --------
@@ -72,7 +73,7 @@ class Resampler:
         if channels < 1:
             raise ValueError(f"channels must be at least 1, got {channels}.")
         if sample_format not in _INPUT_DTYPES:
-            raise ValueError(f'sample_format must be "int16" or "float32", got {sample_format!r}.')
+            raise ValueError(f'sample_format must be "int16", "float32" or "float64", got {sample_format!r}.')
         soxr = typing.cast(_Soxr, import_optional("soxr"))
         self._channels = channels
         self._sample_format = sample_format
@@ -92,14 +93,16 @@ class Resampler:
         ----------
         audio : typing.Union[bytes, bytearray, memoryview, numpy.ndarray]
             Interleaved PCM bytes, which may end partway through a sample frame, or a NumPy
-            array shaped (frames,) for mono input or (frames, channels).
+            array shaped (frames, channels). A 1-D array holds interleaved samples and must
+            contain whole frames.
 
         Returns
         -------
         bytes
-            Signed 16-bit little-endian PCM, mono, 16 kHz. The resampler holds back a few
-            milliseconds of audio as filter history, so the result can be empty. The realtime
-            voice endpoint rejects empty frames, so check before sending.
+            Signed 16-bit little-endian PCM, mono, 16 kHz. The resampler holds back up to about
+            120 ms of audio as filter history, depending on the input rate, so the result can be
+            shorter than the input or empty. At 8 kHz, the first 100 ms block returns nothing.
+            The realtime voice endpoint rejects empty frames, so check before sending.
         """
         return self._convert(self._to_mono(audio), last=False)
 

@@ -23,7 +23,7 @@ def _middle_rms(samples: npt.NDArray[np.int16]) -> float:
     return float(np.sqrt(np.mean(middle**2)))
 
 
-@pytest.mark.parametrize("sample_rate", [44100, 48000])
+@pytest.mark.parametrize("sample_rate", [8000, 11025, 44100, 48000])
 def test_tone_keeps_its_frequency_level_and_duration(sample_rate: int) -> None:
     out = _convert(Resampler(sample_rate=sample_rate, channels=1, sample_format="float32"), _tone(1000, sample_rate))
 
@@ -64,6 +64,17 @@ def test_channels_are_averaged_and_bytes_may_split_a_frame() -> None:
     pcm = resampler.process(stereo[:3]) + resampler.process(stereo[3:]) + resampler.flush()
 
     assert np.frombuffer(pcm, dtype="<i2").tolist() == [2000, -32768, 100]
+
+
+def test_float64_and_interleaved_arrays_convert_like_float32_frames() -> None:
+    stereo = np.stack([_tone(1000, 44100), _tone(300, 44100)], axis=1)
+    expected = _convert(Resampler(sample_rate=44100, channels=2, sample_format="float32"), stereo)
+
+    float64 = _convert(Resampler(sample_rate=44100, channels=2, sample_format="float64"), stereo.astype(np.float64))
+    interleaved = _convert(Resampler(sample_rate=44100, channels=2, sample_format="float32"), stereo.reshape(-1))
+
+    assert float64.tolist() == expected.tolist()
+    assert interleaved.tolist() == expected.tolist()
 
 
 def test_float_input_beyond_full_scale_is_clipped() -> None:
