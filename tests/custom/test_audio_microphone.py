@@ -31,6 +31,8 @@ class _FakeStream:
         self._start_seconds = start_seconds
         self._starting = False
         self._active = False
+        # PortAudio's stream clock has no fixed starting point.
+        self._capture_time = 1000.0
 
     def start(self) -> None:
         if self._fail_on_start:
@@ -40,9 +42,13 @@ class _FakeStream:
         self._starting = False
         self._active = True
 
-    def emit(self, block: npt.NDArray[np.float32]) -> None:
+    def emit(self, block: npt.NDArray[np.float32], *, gap_seconds: float = 0.0, input_overflow: bool = False) -> None:
         buffer = block.reshape(-1, 1).copy()
-        self.settings["callback"](buffer, len(block), None, None)
+        self._capture_time += gap_seconds
+        time_info = types.SimpleNamespace(inputBufferAdcTime=self._capture_time)
+        status = types.SimpleNamespace(input_overflow=input_overflow)
+        self.settings["callback"](buffer, len(block), time_info, status)
+        self._capture_time += len(block) / self.settings["samplerate"]
         # PortAudio reuses the buffer for the next block.
         buffer.fill(np.nan)
 
@@ -361,6 +367,34 @@ async def test_falling_behind_with_frames_shorter_than_blocks_raises(monkeypatch
             for _ in range(200):
                 fake.streams[0].emit(_constant(0.25, 1600))
                 await _next_frame(frames)
+
+
+async def test_an_input_overflow_is_counted_without_ending_the_iteration(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        frames = aiter(microphone)
+        fake.streams[0].emit(_constant(0.25))
+        fake.streams[0].emit(_constant(0.5), input_overflow=True)
+
+        assert [await _next_frame(frames) for _ in range(2)] == [_pcm(0.25), _pcm(0.5)]
+        assert microphone.input_overflows == 1
+
+
+async def test_a_jump_in_capture_time_longer_than_a_block_is_counted(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        frames = aiter(microphone)
+        fake.streams[0].emit(_constant(0.25))
+        # A jump shorter than the 10 ms block, which timestamp jitter alone can cause.
+        fake.streams[0].emit(_constant(0.25), gap_seconds=0.005)
+        fake.streams[0].emit(_constant(0.5), gap_seconds=0.2)
+
+        assert [await _next_frame(frames) for _ in range(3)] == [_pcm(0.25), _pcm(0.25), _pcm(0.5)]
+        assert microphone.input_overflows == 1
 
 
 @pytest.mark.parametrize(

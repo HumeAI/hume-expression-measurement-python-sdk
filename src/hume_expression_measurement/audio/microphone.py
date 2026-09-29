@@ -35,7 +35,17 @@ class _InputStream(typing.Protocol):
     def close(self) -> None: ...
 
 
-_Callback = typing.Callable[[npt.NDArray[np.float32], int, typing.Any, typing.Any], None]
+class _CallbackTime(typing.Protocol):
+    @property
+    def inputBufferAdcTime(self) -> float: ...
+
+
+class _CallbackFlags(typing.Protocol):
+    @property
+    def input_overflow(self) -> bool: ...
+
+
+_Callback = typing.Callable[[npt.NDArray[np.float32], int, _CallbackTime, _CallbackFlags], None]
 
 
 class _SoundDevice(typing.Protocol):
@@ -80,7 +90,8 @@ class Microphone:
     ends. If the audio stream stops on its own before then, which some audio systems do when the
     device is disconnected, iteration raises RuntimeError. Iteration also raises RuntimeError if
     more than 10 seconds of recorded audio builds up waiting for the loop, and the waiting audio
-    is discarded.
+    is discarded. If the audio system discards audio it could not deliver in time, iteration
+    continues past the gap, which `input_overflows` counts.
 
     On macOS the first recording triggers a permission prompt for the terminal or app running
     Python. If access is denied, the device records silence rather than raising an error.
@@ -162,6 +173,17 @@ class Microphone:
                 # stop, so the end is also signalled here.
                 microphone._on_finished()
 
+    @property
+    def input_overflows(self) -> int:
+        """
+        Number of times since the microphone opened that the audio system discarded audio it could
+        not deliver in time. This can happen when the computer is busy. These gaps are found from the
+        audio system's overflow reports and timestamps, so the count is only as reliable as they are.
+        The frames do not show where a gap was or how long it lasted.
+        """
+        with self._lock:
+            return self._input_overflows
+
     def _setup(self, info: _DeviceInfo, frame_ms: int) -> None:
         self.device_name = info["name"]
         self.device_sample_rate = int(info["default_samplerate"])
@@ -179,6 +201,8 @@ class Microphone:
         self._overflowed = False
         self._finished = False
         self._wake_scheduled = False
+        self._next_capture_time: typing.Optional[float] = None
+        self._input_overflows = 0
 
     def __aiter__(self) -> typing.AsyncIterator[bytes]:
         with self._lock:
@@ -191,8 +215,22 @@ class Microphone:
         return _Frames(self, iteration)
 
     # PortAudio calls this on its own thread and reuses `indata` after it returns.
-    def _on_block(self, indata: npt.NDArray[np.float32], _frames: int, _time: typing.Any, _status: typing.Any) -> None:
+    def _on_block(
+        self, indata: npt.NDArray[np.float32], _frames: int, time_info: _CallbackTime, status: _CallbackFlags
+    ) -> None:
+        capture_time = time_info.inputBufferAdcTime
+        duration = len(indata) / self.device_sample_rate
         with self._lock:
+            # PortAudio does not flag every gap in the input, for example on macOS when this callback
+            # runs late, but the capture time of the block after a gap jumps ahead. The one-block
+            # margin allows for timestamp jitter.
+            expected = self._next_capture_time
+            self._next_capture_time = capture_time + duration
+            skipped = expected is not None and capture_time - expected > duration
+            # A gap does not end the iteration, because its audio is already lost and ending the
+            # iteration would also lose everything recorded until a new `async for` starts.
+            if status.input_overflow or skipped:
+                self._input_overflows += 1
             if self._overflowed:
                 return
             if self._backlog + len(indata) > self._max_backlog:
