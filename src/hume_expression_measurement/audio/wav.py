@@ -63,8 +63,8 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     Raises
     ------
     ValueError
-        frame_ms is out of range, or the file is not an uncompressed WAV file. Convert other
-        files first, for example with `ffmpeg -i input.wav -ac 1 -ar 16000 -sample_fmt s16 output.wav`.
+        frame_ms is out of range, or the file is not a WAV file this reader supports, such as a
+        compressed or RF64 file. Convert other files first, for example with `ffmpeg -i input.wav -ac 1 -ar 16000 -sample_fmt s16 output.wav`.
 
     Examples
     --------
@@ -101,6 +101,8 @@ def _read_frames(path: str, frame_ms: int, frames: FrameBuffer) -> typing.Iterat
 
 def _read_header(file: typing.BinaryIO, path: str) -> typing.Tuple[_Format, typing.Optional[int]]:
     riff = file.read(12)
+    if riff[:4] == b"RF64":
+        raise _unsupported(path, "RF64 files are not supported")
     if len(riff) < 12 or riff[:4] != b"RIFF" or riff[8:] != b"WAVE":
         raise _unsupported(path, "no RIFF WAVE header")
     fmt: typing.Optional[_Format] = None
@@ -114,9 +116,11 @@ def _read_header(file: typing.BinaryIO, path: str) -> typing.Tuple[_Format, typi
                 raise _unsupported(path, "the data chunk comes before the fmt chunk")
             return fmt, None if size == _UNKNOWN_SIZE else size
         # Chunks with an odd size are followed by a padding byte.
-        body = file.read(size + size % 2)[:size]
+        padded_size = size + size % 2
         if chunk_id == b"fmt ":
-            fmt = _parse_format(body, path)
+            fmt = _parse_format(file.read(padded_size)[:size], path)
+        else:
+            file.seek(padded_size, os.SEEK_CUR)
 
 
 def _parse_format(body: bytes, path: str) -> _Format:
@@ -139,7 +143,7 @@ def _parse_format(body: bytes, path: str) -> _Format:
 
 def _unsupported(path: str, reason: str) -> ValueError:
     return ValueError(
-        f"{path} is not an uncompressed WAV file ({reason}). Convert it first, for example with: {_FFMPEG_COMMAND}"
+        f"{path} is not a supported WAV file ({reason}). Convert it first, for example with: {_FFMPEG_COMMAND}"
     )
 
 

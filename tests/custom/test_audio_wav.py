@@ -126,6 +126,16 @@ def test_compressed_wav_is_rejected_with_a_conversion_command(tmp_path: pathlib.
         next(iter_wav_frames(path))
 
 
+def test_rf64_file_is_rejected_with_a_conversion_command(tmp_path: pathlib.Path) -> None:
+    path = _write_raw_wav(tmp_path / "long.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=bytes(100))
+    path.write_bytes(b"RF64" + path.read_bytes()[4:])
+
+    with pytest.raises(
+        ValueError, match="RF64 files are not supported.*ffmpeg -i input.wav -ac 1 -ar 16000 -sample_fmt s16"
+    ):
+        next(iter_wav_frames(path))
+
+
 @pytest.mark.parametrize("frame_ms", [0, 10001])
 def test_frame_duration_out_of_range_is_rejected_at_call_time(tmp_path: pathlib.Path, frame_ms: int) -> None:
     with pytest.raises(ValueError, match="frame_ms must be between 1 and 10000"):
