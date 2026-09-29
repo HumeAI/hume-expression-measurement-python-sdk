@@ -8,7 +8,8 @@ Requires the audio extra: pip install "hume-expression-measurement[audio]"
 """
 
 from ._optional import MissingDependencyError
+from .microphone import Microphone
 from .resampler import Resampler, SampleFormat
 from .wav import iter_wav_frames
 
-__all__ = ["MissingDependencyError", "Resampler", "SampleFormat", "iter_wav_frames"]
+__all__ = ["Microphone", "MissingDependencyError", "Resampler", "SampleFormat", "iter_wav_frames"]
