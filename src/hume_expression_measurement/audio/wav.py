@@ -7,8 +7,8 @@ import typing
 import numpy as np
 import numpy.typing as npt
 from ._optional import import_optional
-from ._pcm import FrameBuffer, check_frame_ms
-from .resampler import MIN_SAMPLE_RATE, Resampler
+from ._pcm import MIN_SAMPLE_RATE, FrameBuffer, check_frame_ms
+from .resampler import Resampler
 
 _FFMPEG_COMMAND = "ffmpeg -i input.wav -ac 1 -ar 16000 -sample_fmt s16 output.wav"
 

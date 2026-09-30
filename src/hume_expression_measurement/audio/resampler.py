@@ -5,15 +5,12 @@ import typing
 import numpy as np
 import numpy.typing as npt
 from ._optional import import_optional
-from ._pcm import SAMPLE_RATE, check_integer
+from ._pcm import MIN_SAMPLE_RATE, SAMPLE_RATE, check_integer
 
 SampleFormat = typing.Literal["int16", "float32", "float64"]
 
 # soxr crashes the interpreter on much larger rates, so the limit is the largest rate a WAV header can declare.
 _MAX_SAMPLE_RATE = 2**32 - 1
-# At lower rates soxr returns its output in bursts, so a small file declaring a rate of 1 Hz can
-# take hundreds of megabytes in one call.
-MIN_SAMPLE_RATE = 1000
 
 _INPUT_DTYPES: typing.Dict[str, "np.dtype[typing.Any]"] = {
     "int16": np.dtype("<i2"),
@@ -36,8 +33,8 @@ class _Soxr(typing.Protocol):
 
 class Resampler:
     """
-    Converts PCM audio of any sample rate and channel count to the format the realtime voice
-    endpoint accepts: signed 16-bit little-endian PCM, mono, 16 kHz.
+    Converts PCM audio at any sample rate from 1 kHz and any channel count to the format the
+    realtime voice endpoint accepts: signed 16-bit little-endian PCM, mono, 16 kHz.
 
     Pass successive blocks of one stream to `process`, then call `flush` once after the last
     block. Filter state carries over between calls, so a stream converts to the same bytes

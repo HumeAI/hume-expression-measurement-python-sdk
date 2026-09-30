@@ -9,6 +9,10 @@ BYTES_PER_MS = SAMPLE_RATE * 2 // 1000
 # The realtime voice endpoint rejects a frame holding more than 10 seconds of audio.
 MAX_FRAME_MS = 10_000
 
+# Below this rate soxr returns its output in bursts, so a small WAV file declaring a rate of 1 Hz
+# can take hundreds of megabytes in one call.
+MIN_SAMPLE_RATE = 1000
+
 
 def check_integer(name: str, value: int) -> int:
     # operator.index also accepts NumPy integers, which are not subclasses of int. Its result is a

@@ -211,7 +211,7 @@ asyncio.run(main())
 
 ## Audio helpers
 
-`hume_expression_measurement.audio` records from a microphone and converts audio of any sample rate and channel count into frames for the realtime voice endpoint. Install it with the `audio` extra:
+`hume_expression_measurement.audio` records from a microphone and converts audio at any sample rate from 1 kHz and any channel count into frames for the realtime voice endpoint. Install it with the `audio` extra:
 
 ```bash
 pip install "hume-expression-measurement[audio]"
