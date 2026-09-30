@@ -138,11 +138,12 @@ class Microphone:
         ----------
         device : typing.Union[int, str, None]
             The input device, as a sounddevice device index or a substring of its name. None
-            records from the system's default input device. On Windows each device is listed once
-            per host API, such as MME and Windows WASAPI, so add the host API to the name, as in
-            "Microphone WASAPI", or pass the index. The devices, and which one is the default, are
-            read when sounddevice is first imported, so a device connected later, or a new
-            default, is found only after Python restarts.
+            records from the default input device, which is the system's unless the program sets
+            `sounddevice.default.device`. On Windows each device is listed once per host API, such
+            as MME and Windows WASAPI, so add the host API to the name, as in "Microphone WASAPI",
+            or pass the index. The device list is read when sounddevice is first imported, so a
+            device connected later is found only after Python restarts, and on macOS and Windows
+            so is a change to the system's default device.
 
         frame_ms : int
             Duration of each frame in milliseconds, from 1 to 10000.
