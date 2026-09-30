@@ -34,8 +34,10 @@ def _write_raw_wav(
     fmt_extra: bytes = b"",
     data_size: typing.Optional[int] = None,
     after_data: bytes = b"",
+    block_align: typing.Optional[int] = None,
 ) -> pathlib.Path:
-    block_align = channels * ((bits + 7) // 8)
+    if block_align is None:
+        block_align = channels * ((bits + 7) // 8)
     # The reader ignores the byte rate, so an overflowing value is truncated to fit its field.
     byte_rate = (sample_rate * block_align) & 0xFFFFFFFF
     fmt = struct.pack("<HHIIHH", 0xFFFE if extensible else tag, channels, sample_rate, byte_rate, block_align, bits)
@@ -144,6 +146,14 @@ def test_data_of_unknown_size_is_read_to_the_end_of_the_file(tmp_path: pathlib.P
     assert b"".join(iter_wav_frames(path)) == pcm
 
 
+def test_recording_whose_header_declares_no_audio_is_read_to_the_end_of_the_file(tmp_path: pathlib.Path) -> None:
+    pcm = np.arange(-800, 800, dtype="<i2").tobytes()
+    # libsndfile writes a data size of 0 when it opens a file and the real size when it closes it.
+    path = _write_raw_wav(tmp_path / "killed.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=pcm, data_size=0)
+
+    assert b"".join(iter_wav_frames(path)) == pcm
+
+
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs os.mkfifo")
 def test_wav_from_a_pipe_is_read(tmp_path: pathlib.Path) -> None:
     pcm = np.arange(-800, 800, dtype="<i2").tobytes()
@@ -182,6 +192,25 @@ def test_sample_rate_below_1_khz_is_rejected_with_a_conversion_command(tmp_path:
     path = _write_raw_wav(tmp_path / "crafted.wav", tag=1, sample_rate=999, channels=1, bits=16, data=bytes(100))
 
     with pytest.raises(ValueError, match="999 Hz is below the minimum of 1000 Hz.*ffmpeg -i input.wav"):
+        next(iter_wav_frames(path))
+
+
+@pytest.mark.parametrize("block_align", [0, 1])
+def test_block_size_left_at_0_or_1_is_ignored(tmp_path: pathlib.Path, block_align: int) -> None:
+    pcm = np.arange(-800, 800, dtype="<i2").tobytes()
+    path = _write_raw_wav(
+        tmp_path / "speech.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=pcm, block_align=block_align
+    )
+
+    assert b"".join(iter_wav_frames(path)) == pcm
+
+
+def test_block_size_larger_than_one_sample_per_channel_is_rejected(tmp_path: pathlib.Path) -> None:
+    path = _write_raw_wav(
+        tmp_path / "padded.wav", tag=1, sample_rate=16000, channels=2, bits=24, data=bytes(64), block_align=8
+    )
+
+    with pytest.raises(ValueError, match="the fmt chunk is inconsistent"):
         next(iter_wav_frames(path))
 
 

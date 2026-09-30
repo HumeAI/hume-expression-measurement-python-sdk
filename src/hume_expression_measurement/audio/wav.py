@@ -46,8 +46,8 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     with either the basic or the extensible WAV header. Every frame holds
     `frame_ms` milliseconds of audio except the last, which holds what remains. No frame is empty.
 
-    A file that ends partway through a sample, such as an interrupted recording, is read up to
-    the last whole sample.
+    An interrupted recording is read as far as it goes: up to the last whole sample if the file
+    ends partway through one, and to the end of the file if its header declares no audio.
 
     Frames are produced as fast as the file can be read. The realtime voice endpoint accepts the
     first 30 seconds of audio at once and then 2 seconds of audio per second, so pace the sends
@@ -132,7 +132,9 @@ def _read_header(file: typing.BinaryIO, path: str) -> typing.Tuple[_Format, typi
         if chunk_id == b"data":
             if fmt is None:
                 raise _unsupported(path, "the data chunk comes before the fmt chunk")
-            return fmt, None if size == _UNKNOWN_SIZE else size
+            # A recording that was never closed can declare 0, because writers such as libsndfile
+            # fill in the size only when they close the file. ffmpeg also reads such a file to the end.
+            return fmt, None if size in (0, _UNKNOWN_SIZE) else size
         # Chunks with an odd size are followed by a padding byte.
         padded_size = size + size % 2
         if chunk_id == b"fmt ":
@@ -171,7 +173,9 @@ def _parse_format(body: bytes, path: str) -> _Format:
     sample_width = (bits + 7) // 8
     if sample_width not in _SAMPLE_WIDTHS[tag] or (tag == _IEEE_FLOAT and bits != sample_width * 8):
         raise _unsupported(path, f"{bits}-bit {'PCM' if tag == _PCM else 'floating point'}")
-    if channels < 1 or block_align != sample_width * channels:
+    # The reader does not need the block size, and some writers leave it at 0 or 1. A block larger
+    # than one sample per channel means padded samples, which would be decoded wrongly.
+    if channels < 1 or block_align > sample_width * channels:
         raise _unsupported(path, "the fmt chunk is inconsistent")
     if sample_rate < MIN_SAMPLE_RATE:
         raise _unsupported(path, f"{sample_rate} Hz is below the minimum of {MIN_SAMPLE_RATE} Hz")
