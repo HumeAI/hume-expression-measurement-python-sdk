@@ -35,6 +35,7 @@ def _write_raw_wav(
     data_size: typing.Optional[int] = None,
     after_data: bytes = b"",
     block_align: typing.Optional[int] = None,
+    riff_size: typing.Optional[int] = None,
 ) -> pathlib.Path:
     if block_align is None:
         block_align = channels * ((bits + 7) // 8)
@@ -50,7 +51,7 @@ def _write_raw_wav(
     body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"\x00" * (len(fmt) % 2)
     body += b"LIST" + struct.pack("<I", len(info)) + info + b"\x00"
     body += b"data" + struct.pack("<I", len(data) if data_size is None else data_size) + data + after_data
-    path.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
+    path.write_bytes(b"RIFF" + struct.pack("<I", len(body) if riff_size is None else riff_size) + body)
     return path
 
 
@@ -146,12 +147,34 @@ def test_data_of_unknown_size_is_read_to_the_end_of_the_file(tmp_path: pathlib.P
     assert b"".join(iter_wav_frames(path)) == pcm
 
 
-def test_recording_whose_header_declares_no_audio_is_read_to_the_end_of_the_file(tmp_path: pathlib.Path) -> None:
+@pytest.mark.parametrize("riff_size", [8, 0xFFFFFFFF])
+def test_recording_whose_header_declares_no_audio_is_read_to_the_end_of_the_file(
+    tmp_path: pathlib.Path, riff_size: int
+) -> None:
     pcm = np.arange(-800, 800, dtype="<i2").tobytes()
-    # libsndfile writes a data size of 0 when it opens a file and the real size when it closes it.
-    path = _write_raw_wav(tmp_path / "killed.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=pcm, data_size=0)
+    # libsndfile writes a RIFF size of 8 and a data size of 0 when it opens a file, and the real sizes
+    # when it closes it.
+    path = _write_raw_wav(
+        tmp_path / "killed.wav",
+        tag=1,
+        sample_rate=16000,
+        channels=1,
+        bits=16,
+        data=pcm,
+        data_size=0,
+        riff_size=riff_size,
+    )
 
     assert b"".join(iter_wav_frames(path)) == pcm
+
+
+def test_empty_data_chunk_followed_by_metadata_gives_no_frames(tmp_path: pathlib.Path) -> None:
+    id3 = b"id3 " + struct.pack("<I", 64) + bytes(range(64))
+    path = _write_raw_wav(
+        tmp_path / "tagged.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=b"", after_data=id3
+    )
+
+    assert list(iter_wav_frames(path)) == []
 
 
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs os.mkfifo")

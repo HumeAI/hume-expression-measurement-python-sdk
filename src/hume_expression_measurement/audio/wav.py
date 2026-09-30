@@ -123,20 +123,26 @@ def _read_header(file: typing.BinaryIO, path: str) -> typing.Tuple[_Format, typi
         raise _unsupported(path, "RF64 files are not supported")
     if len(riff) < 12 or riff[:4] != b"RIFF" or riff[8:] != b"WAVE":
         raise _unsupported(path, "no RIFF WAVE header")
+    riff_size = struct.unpack("<I", riff[4:8])[0]
+    offset = len(riff)
     fmt: typing.Optional[_Format] = None
     while True:
         header = file.read(8)
         if len(header) < 8:
             raise _unsupported(path, "no data chunk")
+        offset += len(header)
         chunk_id, size = header[:4], struct.unpack("<I", header[4:])[0]
         if chunk_id == b"data":
             if fmt is None:
                 raise _unsupported(path, "the data chunk comes before the fmt chunk")
-            # A recording that was never closed can declare 0, because writers such as libsndfile
-            # fill in the size only when they close the file. ffmpeg also reads such a file to the end.
-            return fmt, None if size in (0, _UNKNOWN_SIZE) else size
+            # Writers such as libsndfile fill in the sizes only when they close the file, so a recording
+            # that was never closed declares no audio and a RIFF chunk that ends before it. A finished
+            # file with no audio also declares 0, and its RIFF size covers any chunks after the data.
+            unclosed = size == 0 and (riff_size == _UNKNOWN_SIZE or 8 + riff_size <= offset)
+            return fmt, None if unclosed or size == _UNKNOWN_SIZE else size
         # Chunks with an odd size are followed by a padding byte.
         padded_size = size + size % 2
+        offset += padded_size
         if chunk_id == b"fmt ":
             body = file.read(min(size, _FMT_READ_BYTES))
             fmt = _parse_format(body, path)
