@@ -178,6 +178,13 @@ def test_12_bit_samples_are_read_from_the_high_bits_of_16_bit_containers(tmp_pat
     assert np.frombuffer(b"".join(iter_wav_frames(path)), dtype="<i2").tolist() == [0, 16384, -32768, 32752]
 
 
+def test_sample_rate_below_1_khz_is_rejected_with_a_conversion_command(tmp_path: pathlib.Path) -> None:
+    path = _write_raw_wav(tmp_path / "crafted.wav", tag=1, sample_rate=999, channels=1, bits=16, data=bytes(100))
+
+    with pytest.raises(ValueError, match="999 Hz is below the minimum of 1000 Hz.*ffmpeg -i input.wav"):
+        next(iter_wav_frames(path))
+
+
 def test_floating_point_depth_other_than_32_or_64_bits_is_rejected(tmp_path: pathlib.Path) -> None:
     path = _write_raw_wav(tmp_path / "float.wav", tag=3, sample_rate=16000, channels=1, bits=31, data=bytes(16))
 
@@ -226,6 +233,17 @@ def test_rf64_file_is_rejected_with_a_conversion_command(tmp_path: pathlib.Path)
 def test_frame_duration_out_of_range_is_rejected_at_call_time(tmp_path: pathlib.Path, frame_ms: int) -> None:
     with pytest.raises(ValueError, match="frame_ms must be between 1 and 10000"):
         iter_wav_frames(tmp_path / "unused.wav", frame_ms=frame_ms)
+
+
+def test_numpy_integer_frame_duration_gives_frames_of_that_duration(tmp_path: pathlib.Path) -> None:
+    pcm = np.arange(48000, dtype="<i2").tobytes()
+    path = _write_wav(tmp_path / "speech.wav", sample_rate=16000, channels=1, sample_width=2, data=pcm)
+
+    # 2500 ms in bytes overflows int16 to a size that is wrong but positive, so a regression gives
+    # short frames rather than a hang.
+    frames = list(iter_wav_frames(path, frame_ms=typing.cast(typing.Any, np.int16(2500))))
+
+    assert [len(frame) for frame in frames] == [80000, 16000]
 
 
 def test_frame_duration_that_is_not_an_integer_is_rejected_at_call_time(tmp_path: pathlib.Path) -> None:

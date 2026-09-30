@@ -11,6 +11,9 @@ SampleFormat = typing.Literal["int16", "float32", "float64"]
 
 # soxr crashes the interpreter on much larger rates, so the limit is the largest rate a WAV header can declare.
 _MAX_SAMPLE_RATE = 2**32 - 1
+# At lower rates soxr returns its output in bursts, so a small file declaring a rate of 1 Hz can
+# take hundreds of megabytes in one call.
+MIN_SAMPLE_RATE = 1000
 
 _INPUT_DTYPES: typing.Dict[str, "np.dtype[typing.Any]"] = {
     "int16": np.dtype("<i2"),
@@ -45,8 +48,8 @@ class Resampler:
 
     Parameters
     ----------
-    sample_rate : int
-        Sample rate of the input, in Hz.
+    sample_rate : float
+        Sample rate of the input, in Hz, at least 1000.
 
     channels : int
         Number of channels in the input.
@@ -70,11 +73,14 @@ class Resampler:
         await socket.send_audio_frame(pcm)
     """
 
-    def __init__(self, *, sample_rate: int, channels: int, sample_format: SampleFormat = "int16") -> None:
-        check_integer("sample_rate", sample_rate)
-        if not 1 <= sample_rate <= _MAX_SAMPLE_RATE:
-            raise ValueError(f"sample_rate must be between 1 and {_MAX_SAMPLE_RATE}, got {sample_rate}.")
-        check_integer("channels", channels)
+    def __init__(self, *, sample_rate: float, channels: int, sample_format: SampleFormat = "int16") -> None:
+        if not isinstance(sample_rate, (int, float, np.integer, np.floating)):
+            raise TypeError(f"sample_rate must be a number, got {sample_rate!r}.")
+        if not MIN_SAMPLE_RATE <= sample_rate <= _MAX_SAMPLE_RATE:
+            raise ValueError(
+                f"sample_rate must be between {MIN_SAMPLE_RATE} and {_MAX_SAMPLE_RATE}, got {sample_rate}."
+            )
+        channels = check_integer("channels", channels)
         if channels < 1:
             raise ValueError(f"channels must be at least 1, got {channels}.")
         if sample_format not in _INPUT_DTYPES:
@@ -104,9 +110,10 @@ class Resampler:
         Returns
         -------
         bytes
-            Signed 16-bit little-endian PCM, mono, 16 kHz. The resampler holds back up to about
-            120 ms of audio as filter history, depending on the input rate, so the result can be
-            shorter than the input or empty. At 8 kHz, the first 100 ms block returns nothing.
+            Signed 16-bit little-endian PCM, mono, 16 kHz. The resampler holds back audio as filter
+            history, up to about 120 ms at input rates of 8 kHz and above and up to about 1 second
+            at lower rates, so the result can be shorter than the input or empty. At 8 kHz, the
+            first 100 ms block returns nothing.
             The realtime voice endpoint rejects empty frames and frames longer than 10 seconds,
             so check the result before sending it, and pass a long recording in blocks of about
             100 ms rather than in one call. The endpoint accepts the first 30 seconds of audio at
@@ -130,15 +137,17 @@ class Resampler:
             The input ended partway through a sample frame. The resampler is reset either way.
         """
         leftover = len(self._pending)
-        if leftover:
+        # soxr accepts no more input once it has been given the last block, so the reset runs even
+        # if the conversion raises.
+        try:
+            if leftover:
+                raise ValueError(
+                    f"The input ended {leftover} bytes into a sample frame of {self._frame_bytes} bytes. "
+                    "Every frame holds one sample per channel."
+                )
+            return self._convert(np.zeros(0, dtype=np.float32), last=True)
+        finally:
             self._reset()
-            raise ValueError(
-                f"The input ended {leftover} bytes into a sample frame of {self._frame_bytes} bytes. "
-                "Every frame holds one sample per channel."
-            )
-        pcm = self._convert(np.zeros(0, dtype=np.float32), last=True)
-        self._reset()
-        return pcm
 
     def _to_mono(
         self, audio: typing.Union[bytes, bytearray, memoryview, npt.NDArray[typing.Any]]

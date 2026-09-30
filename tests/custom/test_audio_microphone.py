@@ -168,6 +168,20 @@ async def test_microphone_yields_16k_frames_of_the_recorded_audio(monkeypatch: p
     assert stream.stopped and stream.closed
 
 
+async def test_numpy_integer_frame_duration_gives_frames_of_that_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    # 2500 ms in bytes overflows int16 to a size that is wrong but positive, so a regression gives
+    # short frames rather than a hang.
+    async with Microphone.open(frame_ms=typing.cast(typing.Any, np.int16(2500))) as microphone:
+        frames = aiter(microphone)
+        fake.streams[0].emit(_constant(0.25, 40000))
+        frame = await _next_frame(frames)
+
+    assert frame == np.full(40000, 8192, dtype="<i2").tobytes()
+
+
 async def test_audio_recorded_on_another_thread_wakes_a_waiting_iteration(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
     _install(monkeypatch, fake)

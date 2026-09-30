@@ -7,8 +7,8 @@ import typing
 import numpy as np
 import numpy.typing as npt
 from ._optional import import_optional
-from ._pcm import FrameBuffer
-from .resampler import Resampler
+from ._pcm import FrameBuffer, check_frame_ms
+from .resampler import MIN_SAMPLE_RATE, Resampler
 
 _FFMPEG_COMMAND = "ffmpeg -i input.wav -ac 1 -ar 16000 -sample_fmt s16 output.wav"
 
@@ -40,10 +40,10 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     """
     Reads a WAV file and yields it as frames ready to send with `send_audio_frame`.
 
-    The audio is converted to signed 16-bit little-endian PCM, mono, 16 kHz, whatever the file's
-    sample rate and channel count. Integer PCM (8, 16, 24 or 32-bit, and narrower depths such as
-    12 or 20-bit stored in those widths) and floating point (32 or 64-bit) are supported, with
-    either the basic or the extensible WAV header. Every frame holds
+    The audio is converted to signed 16-bit little-endian PCM, mono, 16 kHz, from any sample rate
+    of 1 kHz or more and any channel count. Integer PCM (8, 16, 24 or 32-bit, and narrower depths
+    such as 12 or 20-bit stored in those widths) and floating point (32 or 64-bit) are supported,
+    with either the basic or the extensible WAV header. Every frame holds
     `frame_ms` milliseconds of audio except the last, which holds what remains. No frame is empty.
 
     A file that ends partway through a sample, such as an interrupted recording, is read up to
@@ -85,6 +85,7 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     for frame in iter_wav_frames("speech.wav"):
         await socket.send_audio_frame(frame)
     """
+    frame_ms = check_frame_ms(frame_ms)
     frames = FrameBuffer(frame_ms)
     # Loaded here so a missing soxr is reported by this call rather than by the first `next()`.
     import_optional("soxr")
@@ -170,8 +171,10 @@ def _parse_format(body: bytes, path: str) -> _Format:
     sample_width = (bits + 7) // 8
     if sample_width not in _SAMPLE_WIDTHS[tag] or (tag == _IEEE_FLOAT and bits != sample_width * 8):
         raise _unsupported(path, f"{bits}-bit {'PCM' if tag == _PCM else 'floating point'}")
-    if channels < 1 or sample_rate < 1 or block_align != sample_width * channels:
+    if channels < 1 or block_align != sample_width * channels:
         raise _unsupported(path, "the fmt chunk is inconsistent")
+    if sample_rate < MIN_SAMPLE_RATE:
+        raise _unsupported(path, f"{sample_rate} Hz is below the minimum of {MIN_SAMPLE_RATE} Hz")
     return _Format(tag, channels, sample_rate, sample_width)
 
 

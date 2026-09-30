@@ -144,7 +144,7 @@ class Microphone:
             The device exists but could not be opened, for example because another application
             holds it exclusively.
         """
-        check_frame_ms(frame_ms)
+        frame_ms = check_frame_ms(frame_ms)
         # Loaded here so a missing soxr is reported before recording rather than at the first `async for`.
         import_optional("soxr")
         # PortAudio stays on the event loop thread. Cancelling an asyncio.to_thread call leaves its

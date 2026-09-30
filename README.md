@@ -276,7 +276,7 @@ The device records at its own sample rate, and the SDK converts the first channe
 
 ### WAV files
 
-`iter_wav_frames` reads 8, 16, 24, or 32-bit integer and 32 or 64-bit floating-point WAV at any sample rate and channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
+`iter_wav_frames` reads 8, 16, 24, or 32-bit integer and 32 or 64-bit floating-point WAV at any sample rate from 1 kHz and any channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
 
 ```python
 from hume_expression_measurement.audio import iter_wav_frames
