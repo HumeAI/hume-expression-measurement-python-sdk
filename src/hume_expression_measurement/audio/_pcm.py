@@ -9,27 +9,32 @@ BYTES_PER_MS = SAMPLE_RATE * 2 // 1000
 # The realtime voice endpoint rejects a frame holding more than 10 seconds of audio.
 MAX_FRAME_MS = 10_000
 
+# Below this rate soxr returns its output in bursts, so a small WAV file declaring a rate of 1 Hz
+# can take hundreds of megabytes in one call.
+MIN_SAMPLE_RATE = 1000
 
-def check_integer(name: str, value: int) -> None:
-    # operator.index also accepts NumPy integers, which are not subclasses of int.
+
+def check_integer(name: str, value: int) -> int:
+    # operator.index also accepts NumPy integers, which are not subclasses of int. Its result is a
+    # plain int, which callers use because arithmetic on a small NumPy integer can overflow.
     try:
-        operator.index(value)
+        return operator.index(value)
     except TypeError:
         raise TypeError(f"{name} must be an integer, got {value!r}.") from None
 
 
-def check_frame_ms(frame_ms: int) -> None:
-    check_integer("frame_ms", frame_ms)
+def check_frame_ms(frame_ms: int) -> int:
+    frame_ms = check_integer("frame_ms", frame_ms)
     if not 1 <= frame_ms <= MAX_FRAME_MS:
         raise ValueError(f"frame_ms must be between 1 and {MAX_FRAME_MS}, got {frame_ms}.")
+    return frame_ms
 
 
 class FrameBuffer:
     """Cuts a stream of 16 kHz mono s16le bytes into frames of a fixed duration."""
 
     def __init__(self, frame_ms: int) -> None:
-        check_frame_ms(frame_ms)
-        self._frame_bytes = frame_ms * BYTES_PER_MS
+        self._frame_bytes = check_frame_ms(frame_ms) * BYTES_PER_MS
         self._buffer = bytearray()
 
     def push(self, pcm: bytes) -> typing.List[bytes]:

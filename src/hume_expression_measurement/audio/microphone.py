@@ -14,8 +14,10 @@ from ._pcm import FrameBuffer, check_frame_ms
 from .resampler import Resampler
 
 _PORTAUDIO_MISSING = (
-    "sounddevice is installed, but the PortAudio library it records through is not. Install PortAudio "
-    "with your system package manager, for example `sudo apt-get install libportaudio2` on Debian or Ubuntu."
+    "sounddevice is installed, but the PortAudio library it records through could not be loaded. On Linux, "
+    "install PortAudio with your system package manager, for example `sudo apt-get install libportaudio2` on "
+    "Debian or Ubuntu. On macOS and Windows, sounddevice's wheels for those systems include PortAudio, so "
+    "reinstall sounddevice, upgrading it if this version has no wheel for your system."
 )
 # PortAudio keeps recording when the loop falls behind, so the audio waiting for it needs a cap.
 _MAX_BACKLOG_SECONDS = 10
@@ -23,8 +25,13 @@ _MAX_BACKLOG_SECONDS = 10
 
 class _DeviceInfo(typing.TypedDict):
     name: str
+    hostapi: int
     max_input_channels: int
     default_samplerate: float
+
+
+class _HostApiInfo(typing.TypedDict):
+    name: str
 
 
 class _InputStream(typing.Protocol):
@@ -55,6 +62,8 @@ class _SoundDevice(typing.Protocol):
         self, device: typing.Union[int, str, None] = ..., kind: typing.Optional[str] = ...
     ) -> typing.Any: ...
 
+    def query_hostapis(self, index: typing.Optional[int] = ...) -> typing.Any: ...
+
     def InputStream(
         self,
         *,
@@ -80,18 +89,21 @@ class Microphone:
     `send_audio_frame`: signed 16-bit little-endian PCM, mono, 16 kHz.
 
     The device is opened at its own default sample rate and converted with `Resampler`, so any
-    microphone works whatever its native format. Only the device's first channel is recorded.
+    microphone works whatever its native format. A device with more than one channel is recorded
+    as one, either its first channel or a mix of all of them, depending on the audio system.
 
     Open one with `Microphone.open` rather than constructing it.
 
-    Each `async for` yields only audio recorded after it starts, so a paused loop never resumes
-    with stale audio, and starting a new `async for` ends any earlier one. When the `async with`
-    block exits, an `async for` running in another task yields the rest of the audio and then
-    ends. If the audio stream stops on its own before then, which some audio systems do when the
-    device is disconnected, iteration raises RuntimeError. Iteration also raises RuntimeError if
-    more than 10 seconds of recorded audio builds up waiting for the loop, and the waiting audio
-    is discarded. If the audio system discards audio it could not deliver in time, iteration
-    continues past the gap, which `input_overflows` counts.
+    Each `async for` yields only audio recorded after it starts, and starting a new `async for`
+    ends any earlier one. A running loop yields everything recorded while its body runs, including
+    while it waits, so a push-to-talk loop that skips the audio between presses starts a new
+    `async for` for each press. When the `async with` block exits, an `async for` running in
+    another task yields the rest of the audio and then ends. If the audio stream stops on its own
+    before then, which some audio systems do when the device is disconnected, iteration raises
+    RuntimeError. Iteration also raises RuntimeError if more than 10 seconds of recorded audio
+    builds up waiting for the loop, and the waiting audio is discarded. If the audio system
+    discards audio it could not deliver in time, iteration continues past the gap, which
+    `input_overflows` counts.
 
     On macOS the first recording triggers a permission prompt for the terminal or app running
     Python. If access is denied, the device records silence rather than raising an error.
@@ -126,7 +138,12 @@ class Microphone:
         ----------
         device : typing.Union[int, str, None]
             The input device, as a sounddevice device index or a substring of its name. None
-            records from the system's default input device.
+            records from the default input device, which is the system's unless the program sets
+            `sounddevice.default.device`. On Windows each device is listed once per host API, such
+            as MME and Windows WASAPI, so add the host API to the name, as in "Microphone WASAPI",
+            or pass the index. The device list is read when sounddevice is first imported, so a
+            device connected later is found only after Python restarts, and on macOS and Windows
+            so is a change to the system's default device.
 
         frame_ms : int
             Duration of each frame in milliseconds, from 1 to 10000.
@@ -134,17 +151,18 @@ class Microphone:
         Raises
         ------
         MissingDependencyError
-            The audio extra, or the PortAudio system library, is not installed.
+            The audio extra, or the PortAudio library sounddevice records through, is not
+            installed.
 
         ValueError
-            frame_ms is out of range, or the device does not exist or is not an input device.
-            The message lists the available input devices.
+            frame_ms is out of range, the device does not exist or is not an input device, or
+            its name matches more than one device. The message lists the available input devices.
 
         sounddevice.PortAudioError
             The device exists but could not be opened, for example because another application
             holds it exclusively.
         """
-        check_frame_ms(frame_ms)
+        frame_ms = check_frame_ms(frame_ms)
         # Loaded here so a missing soxr is reported before recording rather than at the first `async for`.
         import_optional("soxr")
         # PortAudio stays on the event loop thread. Cancelling an asyncio.to_thread call leaves its
@@ -357,7 +375,9 @@ def _find_input_device(device: typing.Union[int, str, None]) -> typing.Tuple[_So
     try:
         info = typing.cast(_DeviceInfo, sounddevice.query_devices(device, kind="input"))
     except (ValueError, sounddevice.PortAudioError) as err:
-        reason = "There is no default input device" if device is None else str(err)
+        # sounddevice reports a missing default input device as a failure to query device -1.
+        no_default = device is None and isinstance(err, sounddevice.PortAudioError)
+        reason = "There is no default input device" if no_default else str(err)
         raise ValueError(f"{reason}. {_input_devices(sounddevice)}") from err
     return sounddevice, info
 
@@ -367,11 +387,23 @@ def _load_sounddevice() -> _SoundDevice:
         return typing.cast(_SoundDevice, import_optional("sounddevice"))
     except OSError as err:
         raise MissingDependencyError(_PORTAUDIO_MISSING, name="sounddevice") from err
+    except ModuleNotFoundError as err:
+        # When PortAudio is not installed on macOS or Windows, sounddevice falls back to a copy in
+        # this module, which its platform-independent wheel leaves out.
+        if err.name != "_sounddevice_data":
+            raise
+        raise MissingDependencyError(_PORTAUDIO_MISSING, name="sounddevice") from err
 
 
 def _input_devices(sounddevice: _SoundDevice) -> str:
     devices = typing.cast(typing.Sequence[_DeviceInfo], sounddevice.query_devices())
-    inputs = [f"{index}: {info['name']}" for index, info in enumerate(devices) if info["max_input_channels"] > 0]
+    hostapis = typing.cast(typing.Sequence[_HostApiInfo], sounddevice.query_hostapis())
+    # Windows lists each device once per host API. sounddevice matches `device` against this form.
+    inputs = [
+        f"{index}: {info['name']}, {hostapis[info['hostapi']]['name']}"
+        for index, info in enumerate(devices)
+        if info["max_input_channels"] > 0
+    ]
     if not inputs:
         return "No input devices are available."
     return "Available input devices: " + "; ".join(inputs) + "."

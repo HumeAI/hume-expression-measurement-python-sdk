@@ -211,7 +211,7 @@ asyncio.run(main())
 
 ## Audio helpers
 
-`hume_expression_measurement.audio` records from a microphone and converts audio of any sample rate and channel count into frames for the realtime voice endpoint. Install it with the `audio` extra:
+`hume_expression_measurement.audio` records from a microphone and converts audio at any sample rate from 1 kHz and any channel count into frames for the realtime voice endpoint. Install it with the `audio` extra:
 
 ```bash
 pip install "hume-expression-measurement[audio]"
@@ -272,11 +272,11 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-The device records at its own sample rate, and the SDK converts the first channel to 16 kHz mono. Each `async for` yields only audio recorded after it starts, so a push-to-talk loop never sends stale audio. If the loop body is too slow and more than 10 seconds of audio builds up, iteration raises a `RuntimeError`. An unknown device, or one that is not an input device, raises a `ValueError` that lists the available input devices. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
+The device records at its own sample rate, and the SDK converts its audio to 16 kHz mono. Each `async for` yields only audio recorded after it starts, so a push-to-talk loop that starts a new `async for` for each press never sends audio recorded between presses. If the loop body is too slow and more than 10 seconds of audio builds up, iteration raises a `RuntimeError`. An unknown device, one that is not an input device, or a name that matches several devices raises a `ValueError` that lists the available input devices. On Windows, where each device is listed once per host API, add the host API to the name, for example `"Microphone WASAPI"`, or pass the index. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
 
 ### WAV files
 
-`iter_wav_frames` reads 8, 16, 24, or 32-bit integer and 32 or 64-bit floating-point WAV at any sample rate and channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
+`iter_wav_frames` reads 8, 16, 24, or 32-bit integer and 32 or 64-bit floating-point WAV at any sample rate from 1 kHz and any channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
 
 ```python
 from hume_expression_measurement.audio import iter_wav_frames

@@ -7,7 +7,7 @@ import typing
 import numpy as np
 import numpy.typing as npt
 from ._optional import import_optional
-from ._pcm import FrameBuffer
+from ._pcm import MIN_SAMPLE_RATE, FrameBuffer, check_frame_ms
 from .resampler import Resampler
 
 _FFMPEG_COMMAND = "ffmpeg -i input.wav -ac 1 -ar 16000 -sample_fmt s16 output.wav"
@@ -40,14 +40,15 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     """
     Reads a WAV file and yields it as frames ready to send with `send_audio_frame`.
 
-    The audio is converted to signed 16-bit little-endian PCM, mono, 16 kHz, whatever the file's
-    sample rate and channel count. Integer PCM (8, 16, 24 or 32-bit, and narrower depths such as
-    12 or 20-bit stored in those widths) and floating point (32 or 64-bit) are supported, with
-    either the basic or the extensible WAV header. Every frame holds
+    The audio is converted to signed 16-bit little-endian PCM, mono, 16 kHz, from any sample rate
+    of 1 kHz or more and any channel count. Integer PCM (8, 16, 24 or 32-bit, and narrower depths
+    such as 12 or 20-bit stored in those widths) and floating point (32 or 64-bit) are supported,
+    with either the basic or the extensible WAV header. Every frame holds
     `frame_ms` milliseconds of audio except the last, which holds what remains. No frame is empty.
 
-    A file that ends partway through a sample, such as an interrupted recording, is read up to
-    the last whole sample.
+    An interrupted recording is read as far as it goes: up to the last whole sample if the file
+    ends partway through one, and to the end of the file if its header still declares an empty
+    file, as libsndfile leaves a recording it never closed.
 
     Frames are produced as fast as the file can be read. The realtime voice endpoint accepts the
     first 30 seconds of audio at once and then 2 seconds of audio per second, so pace the sends
@@ -85,6 +86,7 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     for frame in iter_wav_frames("speech.wav"):
         await socket.send_audio_frame(frame)
     """
+    frame_ms = check_frame_ms(frame_ms)
     frames = FrameBuffer(frame_ms)
     # Loaded here so a missing soxr is reported by this call rather than by the first `next()`.
     import_optional("soxr")
@@ -122,18 +124,27 @@ def _read_header(file: typing.BinaryIO, path: str) -> typing.Tuple[_Format, typi
         raise _unsupported(path, "RF64 files are not supported")
     if len(riff) < 12 or riff[:4] != b"RIFF" or riff[8:] != b"WAVE":
         raise _unsupported(path, "no RIFF WAVE header")
+    riff_size = struct.unpack("<I", riff[4:8])[0]
+    offset = len(riff)
     fmt: typing.Optional[_Format] = None
     while True:
         header = file.read(8)
         if len(header) < 8:
             raise _unsupported(path, "no data chunk")
+        offset += len(header)
         chunk_id, size = header[:4], struct.unpack("<I", header[4:])[0]
         if chunk_id == b"data":
             if fmt is None:
                 raise _unsupported(path, "the data chunk comes before the fmt chunk")
-            return fmt, None if size == _UNKNOWN_SIZE else size
+            # Writers such as libsndfile fill in the sizes only when they close the file, so a recording
+            # that was never closed declares no audio in a RIFF chunk that ends before it. Any other file
+            # that declares no audio has none, including one whose RIFF size is unknown, because chunks
+            # such as metadata can follow the data.
+            unclosed = size == 0 and 8 + riff_size <= offset
+            return fmt, None if unclosed or size == _UNKNOWN_SIZE else size
         # Chunks with an odd size are followed by a padding byte.
         padded_size = size + size % 2
+        offset += padded_size
         if chunk_id == b"fmt ":
             body = file.read(min(size, _FMT_READ_BYTES))
             fmt = _parse_format(body, path)
@@ -170,8 +181,12 @@ def _parse_format(body: bytes, path: str) -> _Format:
     sample_width = (bits + 7) // 8
     if sample_width not in _SAMPLE_WIDTHS[tag] or (tag == _IEEE_FLOAT and bits != sample_width * 8):
         raise _unsupported(path, f"{bits}-bit {'PCM' if tag == _PCM else 'floating point'}")
-    if channels < 1 or sample_rate < 1 or block_align != sample_width * channels:
+    # The reader does not need the block size, and some writers leave it at 0 or 1. A block larger
+    # than one sample per channel means padded samples, which would be decoded wrongly.
+    if channels < 1 or block_align > sample_width * channels:
         raise _unsupported(path, "the fmt chunk is inconsistent")
+    if sample_rate < MIN_SAMPLE_RATE:
+        raise _unsupported(path, f"{sample_rate} Hz is below the minimum of {MIN_SAMPLE_RATE} Hz")
     return _Format(tag, channels, sample_rate, sample_width)
 
 

@@ -82,8 +82,10 @@ class _FakeSoundDevice:
         fail_on_start: bool = False,
         fail_on_stop: bool = False,
         start_seconds: float = 0.0,
+        hostapis: typing.Sequence[str] = ("Core Audio",),
     ) -> None:
         self.devices = devices
+        self.hostapis = hostapis
         self.streams: typing.List[_FakeStream] = []
         self._default_input = default_input
         self._fail_on_start = fail_on_start
@@ -113,14 +115,18 @@ class _FakeSoundDevice:
             raise ValueError(f"Not an input device: {info['name']!r}")
         return info
 
+    def query_hostapis(self, index: typing.Optional[int] = None) -> typing.Any:
+        apis = tuple({"name": name} for name in self.hostapis)
+        return apis if index is None else apis[index]
+
     def InputStream(self, **settings: typing.Any) -> _FakeStream:
         stream = _FakeStream(self._fail_on_start, self._fail_on_stop, self._start_seconds, **settings)
         self.streams.append(stream)
         return stream
 
 
-def _device(name: str, inputs: int = 1, sample_rate: float = 48000.0) -> typing.Dict[str, typing.Any]:
-    return {"name": name, "max_input_channels": inputs, "default_samplerate": sample_rate}
+def _device(name: str, inputs: int = 1, sample_rate: float = 48000.0, hostapi: int = 0) -> typing.Dict[str, typing.Any]:
+    return {"name": name, "hostapi": hostapi, "max_input_channels": inputs, "default_samplerate": sample_rate}
 
 
 def _install(monkeypatch: pytest.MonkeyPatch, fake: _FakeSoundDevice) -> None:
@@ -166,6 +172,20 @@ async def test_microphone_yields_16k_frames_of_the_recorded_audio(monkeypatch: p
     stream = fake.streams[0]
     assert (stream.settings["samplerate"], stream.settings["channels"]) == (48000, 1)
     assert stream.stopped and stream.closed
+
+
+async def test_numpy_integer_frame_duration_gives_frames_of_that_duration(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
+    _install(monkeypatch, fake)
+
+    # 2500 ms in bytes overflows int16 to a size that is wrong but positive, so a regression gives
+    # short frames rather than a hang.
+    async with Microphone.open(frame_ms=typing.cast(typing.Any, np.int16(2500))) as microphone:
+        frames = aiter(microphone)
+        fake.streams[0].emit(_constant(0.25, 40000))
+        frame = await _next_frame(frames)
+
+    assert frame == np.full(40000, 8192, dtype="<i2").tobytes()
 
 
 async def test_audio_recorded_on_another_thread_wakes_a_waiting_iteration(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -419,9 +439,11 @@ async def test_a_jump_in_capture_time_of_one_block_is_counted(monkeypatch: pytes
 @pytest.mark.parametrize(
     ("device", "default_input", "message"),
     [
-        (0, 0, "Not an input device: 'Speakers'. Available input devices: 1: USB Microphone."),
-        ("Studio", 0, "No input device matching 'Studio'. Available input devices: 1: USB Microphone."),
-        (None, None, "There is no default input device. Available input devices: 1: USB Microphone."),
+        (0, 0, "Not an input device: 'Speakers'. Available input devices: 1: USB Microphone, Core Audio."),
+        ("Studio", 0, "No input device matching 'Studio'. Available input devices: 1: USB Microphone, Core Audio."),
+        (None, None, "There is no default input device. Available input devices: 1: USB Microphone, Core Audio."),
+        # sounddevice.default.device can name a device that has no inputs.
+        (None, 0, "Not an input device: 'Speakers'. Available input devices: 1: USB Microphone, Core Audio."),
     ],
 )
 async def test_unusable_device_lists_the_input_devices(
@@ -435,6 +457,17 @@ async def test_unusable_device_lists_the_input_devices(
 
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         async with Microphone.open(device=device):
+            pass
+
+
+async def test_device_list_names_the_host_api_of_each_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    devices = [_device("Microphone (USB Audio)", hostapi=0), _device("Microphone (USB Audio)", hostapi=1)]
+    _install(monkeypatch, _FakeSoundDevice(devices, hostapis=("MME", "Windows WASAPI")))
+
+    with pytest.raises(
+        ValueError, match=re.escape("0: Microphone (USB Audio), MME; 1: Microphone (USB Audio), Windows WASAPI.")
+    ):
+        async with Microphone.open(device="Studio"):
             pass
 
 
@@ -501,6 +534,22 @@ async def test_missing_portaudio_names_the_system_package(monkeypatch: pytest.Mo
     monkeypatch.setattr(importlib, "import_module", import_without_portaudio)
 
     with pytest.raises(MissingDependencyError, match="libportaudio2"):
+        async with Microphone.open():
+            pass
+
+
+async def test_sounddevice_without_its_bundled_portaudio_names_the_fix(monkeypatch: pytest.MonkeyPatch) -> None:
+    import_module = importlib.import_module
+
+    # sounddevice's platform-independent wheel on macOS or Windows, with no PortAudio installed.
+    def import_without_bundled_portaudio(name: str, package: typing.Optional[str] = None) -> types.ModuleType:
+        if name == "sounddevice":
+            raise ModuleNotFoundError("No module named '_sounddevice_data'", name="_sounddevice_data")
+        return import_module(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", import_without_bundled_portaudio)
+
+    with pytest.raises(MissingDependencyError, match="reinstall sounddevice"):
         async with Microphone.open():
             pass
 
