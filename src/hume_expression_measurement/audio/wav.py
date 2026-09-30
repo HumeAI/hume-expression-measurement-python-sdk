@@ -47,7 +47,8 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     `frame_ms` milliseconds of audio except the last, which holds what remains. No frame is empty.
 
     An interrupted recording is read as far as it goes: up to the last whole sample if the file
-    ends partway through one, and to the end of the file if its header declares no audio.
+    ends partway through one, and to the end of the file if its header still declares an empty
+    file, as libsndfile leaves a recording it never closed.
 
     Frames are produced as fast as the file can be read. The realtime voice endpoint accepts the
     first 30 seconds of audio at once and then 2 seconds of audio per second, so pace the sends
@@ -136,9 +137,10 @@ def _read_header(file: typing.BinaryIO, path: str) -> typing.Tuple[_Format, typi
             if fmt is None:
                 raise _unsupported(path, "the data chunk comes before the fmt chunk")
             # Writers such as libsndfile fill in the sizes only when they close the file, so a recording
-            # that was never closed declares no audio and a RIFF chunk that ends before it. A finished
-            # file with no audio also declares 0, and its RIFF size covers any chunks after the data.
-            unclosed = size == 0 and (riff_size == _UNKNOWN_SIZE or 8 + riff_size <= offset)
+            # that was never closed declares no audio in a RIFF chunk that ends before it. Any other file
+            # that declares no audio has none, including one whose RIFF size is unknown, because chunks
+            # such as metadata can follow the data.
+            unclosed = size == 0 and 8 + riff_size <= offset
             return fmt, None if unclosed or size == _UNKNOWN_SIZE else size
         # Chunks with an odd size are followed by a padding byte.
         padded_size = size + size % 2
