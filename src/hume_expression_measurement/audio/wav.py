@@ -106,6 +106,8 @@ def _read_frames(path: str, frame_ms: int, frames: FrameBuffer) -> typing.Iterat
             usable = len(data) - len(data) % frame_bytes
             if usable:
                 yield from frames.push(resampler.process(_to_float32(data[:usable], fmt)))
+            # Reads from a buffered file return fewer bytes than requested only at the end of the
+            # file, even from a pipe.
             if len(data) < block_bytes:
                 break
         yield from frames.push(resampler.flush())

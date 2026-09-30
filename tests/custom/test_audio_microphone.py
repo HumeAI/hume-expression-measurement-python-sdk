@@ -219,6 +219,25 @@ async def test_an_iteration_yields_only_audio_recorded_after_it_starts(monkeypat
     assert (first, second) == (_pcm(0.5), _pcm(-0.5))
 
 
+async def test_a_new_iteration_yields_no_audio_held_back_by_an_earlier_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The resampler holds back audio only when it converts the sample rate, so the device records at 48 kHz.
+    fake = _FakeSoundDevice([_device("Built-in Microphone")])
+    _install(monkeypatch, fake)
+    loop = asyncio.get_running_loop()
+
+    def emit_100_ms(value: float) -> None:
+        for _ in range(10):
+            fake.streams[0].emit(_constant(value, 480))
+
+    async with Microphone.open(frame_ms=10) as microphone:
+        loop.call_soon(emit_100_ms, 0.5)
+        await _next_frame(aiter(microphone))
+        loop.call_soon(emit_100_ms, 0.0)
+        frame = await _next_frame(aiter(microphone))
+
+    assert frame == _pcm(0.0)
+
+
 async def test_starting_a_new_iteration_ends_the_earlier_one(monkeypatch: pytest.MonkeyPatch) -> None:
     _install(monkeypatch, _FakeSoundDevice([_device("Built-in Microphone")]))
 

@@ -11,6 +11,7 @@ MAX_FRAME_MS = 10_000
 
 
 def check_integer(name: str, value: int) -> None:
+    # operator.index also accepts NumPy integers, which are not subclasses of int.
     try:
         operator.index(value)
     except TypeError:

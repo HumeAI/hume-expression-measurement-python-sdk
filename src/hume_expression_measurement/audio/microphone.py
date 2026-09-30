@@ -285,6 +285,7 @@ class _Frames:
     def __init__(self, microphone: Microphone, iteration: int) -> None:
         self._microphone = microphone
         self._iteration = iteration
+        # A resampler or frame buffer reused from an earlier iteration would yield some of its audio first.
         self._resampler = Resampler(sample_rate=microphone.device_sample_rate, channels=1, sample_format="float32")
         self._frames = FrameBuffer(microphone._frame_ms)
         self._ready: typing.Deque[bytes] = collections.deque()
