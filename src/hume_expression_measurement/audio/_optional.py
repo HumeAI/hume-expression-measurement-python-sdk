@@ -10,7 +10,7 @@ class MissingDependencyError(ImportError):
     """
     Raised when a library the audio helpers need is not installed.
 
-    The message names the command that installs every library the audio helpers use.
+    The message says how to install what is missing.
     """
 
 
