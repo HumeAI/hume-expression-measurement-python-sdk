@@ -43,6 +43,8 @@ The voice endpoints accept 16-bit PCM at 16 kHz, mono. The upload endpoint takes
 ffmpeg -i recording.wav -f s16le -acodec pcm_s16le -ac 1 -ar 16000 speech.pcm
 ```
 
+To convert in Python instead, or to stream from a microphone, use the [audio helpers](#audio-helpers).
+
 ## Quickstart: upload
 
 The upload endpoints take media you already have and return every measurement in one response.
@@ -205,6 +207,101 @@ async def main() -> None:
 
 
 asyncio.run(main())
+```
+
+## Audio helpers
+
+`hume_expression_measurement.audio` records from a microphone and converts audio of any sample rate and channel count into frames for the realtime voice endpoint. Install it with the `audio` extra:
+
+```bash
+pip install "hume-expression-measurement[audio]"
+```
+
+The extra installs numpy, sounddevice, and soxr. soxr is licensed under the LGPL 2.1 or later and is installed only with this extra. On Linux, sounddevice also needs the PortAudio library, for example `sudo apt-get install libportaudio2` on Debian and Ubuntu. If the extra is missing, importing `hume_expression_measurement.audio` or calling a helper raises `MissingDependencyError`, whose message gives the install command.
+
+### Microphone
+
+`Microphone.open()` records from the default input device, or the one you pass as `device`, and yields 100 ms frames ready to send. This example records for 10 seconds while printing measurements as they arrive, then closes the session.
+
+```python
+import asyncio
+
+from hume_expression_measurement import (
+    AsyncExpressionMeasurementClient,
+    Error,
+    SessionClose,
+    VoiceMeasurementResult,
+    VoiceSessionClosed,
+)
+from hume_expression_measurement.audio import Microphone
+
+
+async def main() -> None:
+    client = AsyncExpressionMeasurementClient()
+
+    # Opening the microphone first means a missing or busy device fails before a session starts.
+    async with Microphone.open() as microphone, client.voice.connect() as socket:
+
+        async def print_measurements() -> None:
+            async for message in socket:
+                if isinstance(message, VoiceMeasurementResult):
+                    top = ", ".join(f"{score.name} {score.probability:.2f}" for score in message.expressions[:3])
+                    print(f"utterance {message.utterance_id}, {message.audio_start_ms} to {message.audio_end_ms} ms: {top}")
+                elif isinstance(message, Error):
+                    print(f"{message.code}: {message.message}")
+                elif isinstance(message, VoiceSessionClosed):
+                    break
+
+        receiver = asyncio.create_task(print_measurements())
+        try:
+            print(f"Recording from {microphone.device_name} for 10 seconds")
+            frames_sent = 0
+            async for frame in microphone:
+                await socket.send_audio_frame(frame)
+                frames_sent += 1
+                # 100 frames of 100 ms is 10 seconds.
+                if frames_sent == 100:
+                    break
+
+            await socket.send_voice_session_close(SessionClose(type="session.close"))
+            await receiver
+        finally:
+            receiver.cancel()
+
+
+asyncio.run(main())
+```
+
+The device records at its own sample rate, and the SDK converts the first channel to 16 kHz mono. Each `async for` yields only audio recorded after it starts, so a push-to-talk loop never sends stale audio. If the loop body is too slow and more than 10 seconds of audio builds up, iteration raises a `RuntimeError`. An unknown device, or one that is not an input device, raises a `ValueError` that lists the available input devices. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
+
+### WAV files
+
+`iter_wav_frames` reads 8, 16, 24, or 32-bit integer and 32 or 64-bit floating-point WAV at any sample rate and channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
+
+```python
+from hume_expression_measurement.audio import iter_wav_frames
+
+with client.voice.connect() as socket:
+    for frame in iter_wav_frames("recording.wav"):
+        socket.send_audio_frame(frame)
+    socket.send_voice_session_close(SessionClose(type="session.close"))
+```
+
+Frames are produced as fast as the file is read, so pace the sends for a file longer than 30 seconds. Compressed WAV files raise a `ValueError` with an ffmpeg command that converts them.
+
+### Other sources
+
+`Resampler` converts a stream you already have, as bytes or NumPy arrays, block by block. Pass each block to `process`, then call `flush` after the last one. `process` can return an empty result while the filter fills, and the endpoint rejects empty frames, so check before sending. The endpoint also rejects frames longer than 10 seconds, so pass a long recording in blocks of about 100 ms rather than in one call, and pace the sends for a recording longer than 30 seconds.
+
+```python
+from hume_expression_measurement.audio import Resampler
+
+resampler = Resampler(sample_rate=48000, channels=2, sample_format="int16")
+for block in blocks:
+    if pcm := resampler.process(block):
+        socket.send_audio_frame(pcm)
+if pcm := resampler.flush():
+    socket.send_audio_frame(pcm)
 ```
 
 ## Scores

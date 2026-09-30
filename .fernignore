@@ -3,3 +3,5 @@ README.md
 .fern/replay.lock
 .fern/replay.yml
 .gitattributes
+src/hume_expression_measurement/audio
+tests/custom
