@@ -1,6 +1,7 @@
 import os
 import pathlib
 import struct
+import sys
 import threading
 import tracemalloc
 import typing
@@ -9,7 +10,7 @@ import wave
 import numpy as np
 import pytest
 
-from hume_expression_measurement.audio import iter_wav_frames
+from hume_expression_measurement.audio import MissingDependencyError, iter_wav_frames
 
 
 def _write_wav(path: pathlib.Path, *, sample_rate: int, channels: int, sample_width: int, data: bytes) -> pathlib.Path:
@@ -151,7 +152,7 @@ def test_wav_from_a_pipe_is_read(tmp_path: pathlib.Path) -> None:
     ).read_bytes()
     fifo = tmp_path / "pipe"
     os.mkfifo(fifo)
-    writer = threading.Thread(target=fifo.write_bytes, args=(wav,))
+    writer = threading.Thread(target=fifo.write_bytes, args=(wav,), daemon=True)
     writer.start()
 
     frames = list(iter_wav_frames(fifo))
@@ -230,3 +231,10 @@ def test_frame_duration_out_of_range_is_rejected_at_call_time(tmp_path: pathlib.
 def test_frame_duration_that_is_not_an_integer_is_rejected_at_call_time(tmp_path: pathlib.Path) -> None:
     with pytest.raises(TypeError, match="frame_ms must be an integer, got 20.0"):
         iter_wav_frames(tmp_path / "unused.wav", frame_ms=typing.cast(typing.Any, 20.0))
+
+
+def test_missing_soxr_is_reported_at_call_time(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "soxr", None)
+
+    with pytest.raises(MissingDependencyError, match=r'pip install "hume-expression-measurement\[audio\]"'):
+        iter_wav_frames(tmp_path / "unused.wav")

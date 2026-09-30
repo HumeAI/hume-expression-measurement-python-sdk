@@ -382,16 +382,16 @@ async def test_an_input_overflow_is_counted_without_ending_the_iteration(monkeyp
         assert microphone.input_overflows == 1
 
 
-async def test_a_jump_in_capture_time_longer_than_a_block_is_counted(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_a_jump_in_capture_time_of_one_block_is_counted(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _FakeSoundDevice([_device("Built-in Microphone", sample_rate=16000.0)])
     _install(monkeypatch, fake)
 
     async with Microphone.open(frame_ms=10) as microphone:
         frames = aiter(microphone)
         fake.streams[0].emit(_constant(0.25))
-        # A jump shorter than the 10 ms block, which timestamp jitter alone can cause.
-        fake.streams[0].emit(_constant(0.25), gap_seconds=0.005)
-        fake.streams[0].emit(_constant(0.5), gap_seconds=0.2)
+        # A jump shorter than half the 10 ms block, which timestamp jitter alone can cause.
+        fake.streams[0].emit(_constant(0.25), gap_seconds=0.002)
+        fake.streams[0].emit(_constant(0.5), gap_seconds=0.01)
 
         assert [await _next_frame(frames) for _ in range(3)] == [_pcm(0.25), _pcm(0.25), _pcm(0.5)]
         assert microphone.input_overflows == 1

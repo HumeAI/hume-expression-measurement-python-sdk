@@ -6,6 +6,7 @@ import typing
 
 import numpy as np
 import numpy.typing as npt
+from ._optional import import_optional
 from ._pcm import FrameBuffer
 from .resampler import Resampler
 
@@ -70,6 +71,9 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
 
     Raises
     ------
+    MissingDependencyError
+        The audio extra is not installed.
+
     ValueError
         frame_ms is out of range, or the file is not a WAV file this reader supports, such as a
         compressed or RF64 file. Convert other files first, for example with `ffmpeg -i input.wav -ac 1 -ar 16000 -sample_fmt s16 output.wav`.
@@ -82,6 +86,8 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
         await socket.send_audio_frame(frame)
     """
     frames = FrameBuffer(frame_ms)
+    # Loaded here so a missing soxr is reported by this call rather than by the first `next()`.
+    import_optional("soxr")
     return _read_frames(os.fspath(path), frame_ms, frames)
 
 

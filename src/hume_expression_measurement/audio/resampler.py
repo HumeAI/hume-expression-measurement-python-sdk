@@ -9,6 +9,9 @@ from ._pcm import SAMPLE_RATE, check_integer
 
 SampleFormat = typing.Literal["int16", "float32", "float64"]
 
+# soxr crashes the interpreter on much larger rates, so the limit is the largest rate a WAV header can declare.
+_MAX_SAMPLE_RATE = 2**32 - 1
+
 _INPUT_DTYPES: typing.Dict[str, "np.dtype[typing.Any]"] = {
     "int16": np.dtype("<i2"),
     "float32": np.dtype("<f4"),
@@ -68,8 +71,9 @@ class Resampler:
     """
 
     def __init__(self, *, sample_rate: int, channels: int, sample_format: SampleFormat = "int16") -> None:
-        if sample_rate <= 0:
-            raise ValueError(f"sample_rate must be positive, got {sample_rate}.")
+        check_integer("sample_rate", sample_rate)
+        if not 1 <= sample_rate <= _MAX_SAMPLE_RATE:
+            raise ValueError(f"sample_rate must be between 1 and {_MAX_SAMPLE_RATE}, got {sample_rate}.")
         check_integer("channels", channels)
         if channels < 1:
             raise ValueError(f"channels must be at least 1, got {channels}.")

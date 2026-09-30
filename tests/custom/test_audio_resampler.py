@@ -113,6 +113,17 @@ def test_array_with_the_wrong_dtype_or_shape_is_rejected() -> None:
         resampler.process(np.zeros((4, 3), dtype=np.int16))
 
 
+@pytest.mark.parametrize("sample_rate", [0, 2**32])
+def test_sample_rate_out_of_range_is_rejected(sample_rate: int) -> None:
+    with pytest.raises(ValueError, match="sample_rate must be between 1 and 4294967295"):
+        Resampler(sample_rate=sample_rate, channels=1)
+
+
+def test_sample_rate_that_is_not_an_integer_is_rejected() -> None:
+    with pytest.raises(TypeError, match="sample_rate must be an integer, got nan"):
+        Resampler(sample_rate=typing.cast(typing.Any, float("nan")), channels=1)
+
+
 def test_channel_count_that_is_not_an_integer_is_rejected() -> None:
     with pytest.raises(TypeError, match="channels must be an integer, got 2.0"):
         Resampler(sample_rate=48000, channels=typing.cast(typing.Any, 2.0))

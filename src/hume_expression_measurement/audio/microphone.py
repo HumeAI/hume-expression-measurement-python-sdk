@@ -222,11 +222,11 @@ class Microphone:
         duration = len(indata) / self.device_sample_rate
         with self._lock:
             # PortAudio does not flag every gap in the input, for example on macOS when this callback
-            # runs late, but the capture time of the block after a gap jumps ahead. The one-block
-            # margin allows for timestamp jitter.
+            # runs late, but the capture time of the block after a gap jumps ahead. Losing one block of
+            # audio moves it exactly one block ahead, so the margin for timestamp jitter is half a block.
             expected = self._next_capture_time
             self._next_capture_time = capture_time + duration
-            skipped = expected is not None and capture_time - expected > duration
+            skipped = expected is not None and capture_time - expected > duration / 2
             # A gap does not end the iteration, because its audio is already lost and ending the
             # iteration would also lose everything recorded until a new `async for` starts.
             if status.input_overflow or skipped:
