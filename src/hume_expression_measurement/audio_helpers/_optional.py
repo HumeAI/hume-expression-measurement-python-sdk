@@ -16,7 +16,7 @@ class MissingDependencyError(ImportError):
 
 def missing_dependency(name: str) -> MissingDependencyError:
     return MissingDependencyError(
-        f"The `{name}` package is required by hume_expression_measurement.audio. "
+        f"The `{name}` package is required by hume_expression_measurement.audio_helpers. "
         f"Install the audio extra: {INSTALL_COMMAND}",
         name=name,
     )

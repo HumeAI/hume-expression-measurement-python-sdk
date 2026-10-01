@@ -81,7 +81,7 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
 
     Examples
     --------
-    from hume_expression_measurement.audio import iter_wav_frames
+    from hume_expression_measurement.audio_helpers import iter_wav_frames
 
     for frame in iter_wav_frames("speech.wav"):
         await socket.send_audio_frame(frame)

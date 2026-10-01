@@ -110,7 +110,7 @@ class Microphone:
 
     Examples
     --------
-    from hume_expression_measurement.audio import Microphone
+    from hume_expression_measurement.audio_helpers import Microphone
 
     async with Microphone.open() as microphone:
         async for frame in microphone:
