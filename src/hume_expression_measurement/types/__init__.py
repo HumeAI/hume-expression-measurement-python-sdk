@@ -12,6 +12,27 @@ if typing.TYPE_CHECKING:
     from .audio_config_update import AudioConfigUpdate
     from .audio_config_update_encoding import AudioConfigUpdateEncoding
     from .audio_config_update_type import AudioConfigUpdateType
+    from .audio_expression_name import AudioExpressionName
+    from .audio_expression_score import AudioExpressionScore
+    from .audio_file_config import AudioFileConfig
+    from .audio_file_measurement import AudioFileMeasurement
+    from .audio_file_response import AudioFileResponse
+    from .audio_file_response_received import AudioFileResponseReceived
+    from .audio_file_utterance import AudioFileUtterance
+    from .audio_measurement_result import AudioMeasurementResult
+    from .audio_measurement_result_type import AudioMeasurementResultType
+    from .audio_produced import AudioProduced
+    from .audio_received import AudioReceived
+    from .audio_run_config import AudioRunConfig
+    from .audio_run_config_schema import AudioRunConfigSchema
+    from .audio_session_closed import AudioSessionClosed
+    from .audio_session_closed_type import AudioSessionClosedType
+    from .audio_session_created import AudioSessionCreated
+    from .audio_session_created_type import AudioSessionCreatedType
+    from .audio_session_update import AudioSessionUpdate
+    from .audio_session_update_type import AudioSessionUpdateType
+    from .audio_session_updated import AudioSessionUpdated
+    from .audio_session_updated_type import AudioSessionUpdatedType
     from .authentication_error import AuthenticationError
     from .bounding_box import BoundingBox
     from .close_reason import CloseReason
@@ -23,29 +44,6 @@ if typing.TYPE_CHECKING:
     from .face import Face
     from .face_config import FaceConfig
     from .face_config_update import FaceConfigUpdate
-    from .face_description_name import FaceDescriptionName
-    from .face_description_score import FaceDescriptionScore
-    from .face_expression_name import FaceExpressionName
-    from .face_expression_score import FaceExpressionScore
-    from .face_file_config import FaceFileConfig
-    from .face_file_config_face import FaceFileConfigFace
-    from .face_file_measurement import FaceFileMeasurement
-    from .face_file_response import FaceFileResponse
-    from .face_file_response_received import FaceFileResponseReceived
-    from .face_measurement_result import FaceMeasurementResult
-    from .face_measurement_result_type import FaceMeasurementResultType
-    from .face_produced import FaceProduced
-    from .face_received import FaceReceived
-    from .face_run_config import FaceRunConfig
-    from .face_run_config_schema import FaceRunConfigSchema
-    from .face_session_closed import FaceSessionClosed
-    from .face_session_closed_type import FaceSessionClosedType
-    from .face_session_created import FaceSessionCreated
-    from .face_session_created_type import FaceSessionCreatedType
-    from .face_session_update import FaceSessionUpdate
-    from .face_session_update_type import FaceSessionUpdateType
-    from .face_session_updated import FaceSessionUpdated
-    from .face_session_updated_type import FaceSessionUpdatedType
     from .image_config import ImageConfig
     from .image_config_type import ImageConfigType
     from .image_config_update import ImageConfigUpdate
@@ -70,29 +68,31 @@ if typing.TYPE_CHECKING:
     from .utterance_end_type import UtteranceEndType
     from .utterance_start import UtteranceStart
     from .utterance_start_type import UtteranceStartType
+    from .video_description_name import VideoDescriptionName
+    from .video_description_score import VideoDescriptionScore
+    from .video_expression_name import VideoExpressionName
+    from .video_expression_score import VideoExpressionScore
+    from .video_file_config import VideoFileConfig
+    from .video_file_config_face import VideoFileConfigFace
+    from .video_file_measurement import VideoFileMeasurement
+    from .video_file_response import VideoFileResponse
+    from .video_file_response_received import VideoFileResponseReceived
+    from .video_measurement_result import VideoMeasurementResult
+    from .video_measurement_result_type import VideoMeasurementResultType
+    from .video_produced import VideoProduced
+    from .video_received import VideoReceived
+    from .video_run_config import VideoRunConfig
+    from .video_run_config_schema import VideoRunConfigSchema
+    from .video_session_closed import VideoSessionClosed
+    from .video_session_closed_type import VideoSessionClosedType
+    from .video_session_created import VideoSessionCreated
+    from .video_session_created_type import VideoSessionCreatedType
+    from .video_session_update import VideoSessionUpdate
+    from .video_session_update_type import VideoSessionUpdateType
+    from .video_session_updated import VideoSessionUpdated
+    from .video_session_updated_type import VideoSessionUpdatedType
     from .voice_attribute_name import VoiceAttributeName
     from .voice_attribute_score import VoiceAttributeScore
-    from .voice_expression_name import VoiceExpressionName
-    from .voice_expression_score import VoiceExpressionScore
-    from .voice_file_config import VoiceFileConfig
-    from .voice_file_measurement import VoiceFileMeasurement
-    from .voice_file_response import VoiceFileResponse
-    from .voice_file_response_received import VoiceFileResponseReceived
-    from .voice_file_utterance import VoiceFileUtterance
-    from .voice_measurement_result import VoiceMeasurementResult
-    from .voice_measurement_result_type import VoiceMeasurementResultType
-    from .voice_produced import VoiceProduced
-    from .voice_received import VoiceReceived
-    from .voice_run_config import VoiceRunConfig
-    from .voice_run_config_schema import VoiceRunConfigSchema
-    from .voice_session_closed import VoiceSessionClosed
-    from .voice_session_closed_type import VoiceSessionClosedType
-    from .voice_session_created import VoiceSessionCreated
-    from .voice_session_created_type import VoiceSessionCreatedType
-    from .voice_session_update import VoiceSessionUpdate
-    from .voice_session_update_type import VoiceSessionUpdateType
-    from .voice_session_updated import VoiceSessionUpdated
-    from .voice_session_updated_type import VoiceSessionUpdatedType
 _dynamic_imports: typing.Dict[str, str] = {
     "AudioConfig": ".audio_config",
     "AudioConfigEncoding": ".audio_config_encoding",
@@ -100,6 +100,27 @@ _dynamic_imports: typing.Dict[str, str] = {
     "AudioConfigUpdate": ".audio_config_update",
     "AudioConfigUpdateEncoding": ".audio_config_update_encoding",
     "AudioConfigUpdateType": ".audio_config_update_type",
+    "AudioExpressionName": ".audio_expression_name",
+    "AudioExpressionScore": ".audio_expression_score",
+    "AudioFileConfig": ".audio_file_config",
+    "AudioFileMeasurement": ".audio_file_measurement",
+    "AudioFileResponse": ".audio_file_response",
+    "AudioFileResponseReceived": ".audio_file_response_received",
+    "AudioFileUtterance": ".audio_file_utterance",
+    "AudioMeasurementResult": ".audio_measurement_result",
+    "AudioMeasurementResultType": ".audio_measurement_result_type",
+    "AudioProduced": ".audio_produced",
+    "AudioReceived": ".audio_received",
+    "AudioRunConfig": ".audio_run_config",
+    "AudioRunConfigSchema": ".audio_run_config_schema",
+    "AudioSessionClosed": ".audio_session_closed",
+    "AudioSessionClosedType": ".audio_session_closed_type",
+    "AudioSessionCreated": ".audio_session_created",
+    "AudioSessionCreatedType": ".audio_session_created_type",
+    "AudioSessionUpdate": ".audio_session_update",
+    "AudioSessionUpdateType": ".audio_session_update_type",
+    "AudioSessionUpdated": ".audio_session_updated",
+    "AudioSessionUpdatedType": ".audio_session_updated_type",
     "AuthenticationError": ".authentication_error",
     "BoundingBox": ".bounding_box",
     "CloseReason": ".close_reason",
@@ -111,29 +132,6 @@ _dynamic_imports: typing.Dict[str, str] = {
     "Face": ".face",
     "FaceConfig": ".face_config",
     "FaceConfigUpdate": ".face_config_update",
-    "FaceDescriptionName": ".face_description_name",
-    "FaceDescriptionScore": ".face_description_score",
-    "FaceExpressionName": ".face_expression_name",
-    "FaceExpressionScore": ".face_expression_score",
-    "FaceFileConfig": ".face_file_config",
-    "FaceFileConfigFace": ".face_file_config_face",
-    "FaceFileMeasurement": ".face_file_measurement",
-    "FaceFileResponse": ".face_file_response",
-    "FaceFileResponseReceived": ".face_file_response_received",
-    "FaceMeasurementResult": ".face_measurement_result",
-    "FaceMeasurementResultType": ".face_measurement_result_type",
-    "FaceProduced": ".face_produced",
-    "FaceReceived": ".face_received",
-    "FaceRunConfig": ".face_run_config",
-    "FaceRunConfigSchema": ".face_run_config_schema",
-    "FaceSessionClosed": ".face_session_closed",
-    "FaceSessionClosedType": ".face_session_closed_type",
-    "FaceSessionCreated": ".face_session_created",
-    "FaceSessionCreatedType": ".face_session_created_type",
-    "FaceSessionUpdate": ".face_session_update",
-    "FaceSessionUpdateType": ".face_session_update_type",
-    "FaceSessionUpdated": ".face_session_updated",
-    "FaceSessionUpdatedType": ".face_session_updated_type",
     "ImageConfig": ".image_config",
     "ImageConfigType": ".image_config_type",
     "ImageConfigUpdate": ".image_config_update",
@@ -158,29 +156,31 @@ _dynamic_imports: typing.Dict[str, str] = {
     "UtteranceEndType": ".utterance_end_type",
     "UtteranceStart": ".utterance_start",
     "UtteranceStartType": ".utterance_start_type",
+    "VideoDescriptionName": ".video_description_name",
+    "VideoDescriptionScore": ".video_description_score",
+    "VideoExpressionName": ".video_expression_name",
+    "VideoExpressionScore": ".video_expression_score",
+    "VideoFileConfig": ".video_file_config",
+    "VideoFileConfigFace": ".video_file_config_face",
+    "VideoFileMeasurement": ".video_file_measurement",
+    "VideoFileResponse": ".video_file_response",
+    "VideoFileResponseReceived": ".video_file_response_received",
+    "VideoMeasurementResult": ".video_measurement_result",
+    "VideoMeasurementResultType": ".video_measurement_result_type",
+    "VideoProduced": ".video_produced",
+    "VideoReceived": ".video_received",
+    "VideoRunConfig": ".video_run_config",
+    "VideoRunConfigSchema": ".video_run_config_schema",
+    "VideoSessionClosed": ".video_session_closed",
+    "VideoSessionClosedType": ".video_session_closed_type",
+    "VideoSessionCreated": ".video_session_created",
+    "VideoSessionCreatedType": ".video_session_created_type",
+    "VideoSessionUpdate": ".video_session_update",
+    "VideoSessionUpdateType": ".video_session_update_type",
+    "VideoSessionUpdated": ".video_session_updated",
+    "VideoSessionUpdatedType": ".video_session_updated_type",
     "VoiceAttributeName": ".voice_attribute_name",
     "VoiceAttributeScore": ".voice_attribute_score",
-    "VoiceExpressionName": ".voice_expression_name",
-    "VoiceExpressionScore": ".voice_expression_score",
-    "VoiceFileConfig": ".voice_file_config",
-    "VoiceFileMeasurement": ".voice_file_measurement",
-    "VoiceFileResponse": ".voice_file_response",
-    "VoiceFileResponseReceived": ".voice_file_response_received",
-    "VoiceFileUtterance": ".voice_file_utterance",
-    "VoiceMeasurementResult": ".voice_measurement_result",
-    "VoiceMeasurementResultType": ".voice_measurement_result_type",
-    "VoiceProduced": ".voice_produced",
-    "VoiceReceived": ".voice_received",
-    "VoiceRunConfig": ".voice_run_config",
-    "VoiceRunConfigSchema": ".voice_run_config_schema",
-    "VoiceSessionClosed": ".voice_session_closed",
-    "VoiceSessionClosedType": ".voice_session_closed_type",
-    "VoiceSessionCreated": ".voice_session_created",
-    "VoiceSessionCreatedType": ".voice_session_created_type",
-    "VoiceSessionUpdate": ".voice_session_update",
-    "VoiceSessionUpdateType": ".voice_session_update_type",
-    "VoiceSessionUpdated": ".voice_session_updated",
-    "VoiceSessionUpdatedType": ".voice_session_updated_type",
 }
 
 
@@ -212,6 +212,27 @@ __all__ = [
     "AudioConfigUpdate",
     "AudioConfigUpdateEncoding",
     "AudioConfigUpdateType",
+    "AudioExpressionName",
+    "AudioExpressionScore",
+    "AudioFileConfig",
+    "AudioFileMeasurement",
+    "AudioFileResponse",
+    "AudioFileResponseReceived",
+    "AudioFileUtterance",
+    "AudioMeasurementResult",
+    "AudioMeasurementResultType",
+    "AudioProduced",
+    "AudioReceived",
+    "AudioRunConfig",
+    "AudioRunConfigSchema",
+    "AudioSessionClosed",
+    "AudioSessionClosedType",
+    "AudioSessionCreated",
+    "AudioSessionCreatedType",
+    "AudioSessionUpdate",
+    "AudioSessionUpdateType",
+    "AudioSessionUpdated",
+    "AudioSessionUpdatedType",
     "AuthenticationError",
     "BoundingBox",
     "CloseReason",
@@ -223,29 +244,6 @@ __all__ = [
     "Face",
     "FaceConfig",
     "FaceConfigUpdate",
-    "FaceDescriptionName",
-    "FaceDescriptionScore",
-    "FaceExpressionName",
-    "FaceExpressionScore",
-    "FaceFileConfig",
-    "FaceFileConfigFace",
-    "FaceFileMeasurement",
-    "FaceFileResponse",
-    "FaceFileResponseReceived",
-    "FaceMeasurementResult",
-    "FaceMeasurementResultType",
-    "FaceProduced",
-    "FaceReceived",
-    "FaceRunConfig",
-    "FaceRunConfigSchema",
-    "FaceSessionClosed",
-    "FaceSessionClosedType",
-    "FaceSessionCreated",
-    "FaceSessionCreatedType",
-    "FaceSessionUpdate",
-    "FaceSessionUpdateType",
-    "FaceSessionUpdated",
-    "FaceSessionUpdatedType",
     "ImageConfig",
     "ImageConfigType",
     "ImageConfigUpdate",
@@ -270,27 +268,29 @@ __all__ = [
     "UtteranceEndType",
     "UtteranceStart",
     "UtteranceStartType",
+    "VideoDescriptionName",
+    "VideoDescriptionScore",
+    "VideoExpressionName",
+    "VideoExpressionScore",
+    "VideoFileConfig",
+    "VideoFileConfigFace",
+    "VideoFileMeasurement",
+    "VideoFileResponse",
+    "VideoFileResponseReceived",
+    "VideoMeasurementResult",
+    "VideoMeasurementResultType",
+    "VideoProduced",
+    "VideoReceived",
+    "VideoRunConfig",
+    "VideoRunConfigSchema",
+    "VideoSessionClosed",
+    "VideoSessionClosedType",
+    "VideoSessionCreated",
+    "VideoSessionCreatedType",
+    "VideoSessionUpdate",
+    "VideoSessionUpdateType",
+    "VideoSessionUpdated",
+    "VideoSessionUpdatedType",
     "VoiceAttributeName",
     "VoiceAttributeScore",
-    "VoiceExpressionName",
-    "VoiceExpressionScore",
-    "VoiceFileConfig",
-    "VoiceFileMeasurement",
-    "VoiceFileResponse",
-    "VoiceFileResponseReceived",
-    "VoiceFileUtterance",
-    "VoiceMeasurementResult",
-    "VoiceMeasurementResultType",
-    "VoiceProduced",
-    "VoiceReceived",
-    "VoiceRunConfig",
-    "VoiceRunConfigSchema",
-    "VoiceSessionClosed",
-    "VoiceSessionClosedType",
-    "VoiceSessionCreated",
-    "VoiceSessionCreatedType",
-    "VoiceSessionUpdate",
-    "VoiceSessionUpdateType",
-    "VoiceSessionUpdated",
-    "VoiceSessionUpdatedType",
 ]
