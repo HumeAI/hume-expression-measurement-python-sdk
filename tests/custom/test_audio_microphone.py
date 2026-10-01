@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from hume_expression_measurement.audio import Microphone, MissingDependencyError
+from hume_expression_measurement.audio_helpers import Microphone, MissingDependencyError
 
 
 class _PortAudioError(Exception):

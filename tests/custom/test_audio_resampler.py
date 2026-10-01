@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from hume_expression_measurement.audio import MissingDependencyError, Resampler
+from hume_expression_measurement.audio_helpers import MissingDependencyError, Resampler
 
 
 def _tone(frequency: float, sample_rate: int, seconds: float = 1.0, amplitude: float = 0.5) -> npt.NDArray[np.float32]:

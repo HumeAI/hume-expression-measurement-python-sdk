@@ -10,7 +10,7 @@ import wave
 import numpy as np
 import pytest
 
-from hume_expression_measurement.audio import MissingDependencyError, iter_wav_frames
+from hume_expression_measurement.audio_helpers import MissingDependencyError, iter_wav_frames
 
 
 def _write_wav(path: pathlib.Path, *, sample_rate: int, channels: int, sample_width: int, data: bytes) -> pathlib.Path:
