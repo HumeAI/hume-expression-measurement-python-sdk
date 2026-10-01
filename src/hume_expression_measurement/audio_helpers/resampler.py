@@ -58,7 +58,7 @@ class Resampler:
 
     Examples
     --------
-    from hume_expression_measurement.audio import Resampler
+    from hume_expression_measurement.audio_helpers import Resampler
 
     resampler = Resampler(sample_rate=48000, channels=2)
     for block in blocks:
