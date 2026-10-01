@@ -2,5 +2,5 @@
 
 VoiceAttributeName = str
 """
-The name of a quality of the voice or the audio, such as a manner of speaking, a vocal timbre or a background sound; see the [full list of voice attributes](/docs/expression-measurement/voice/measurements#voice-attributes). Names are lowercase and may contain spaces and punctuation. New names may be added over time; treat a name you do not recognize as a new prediction.
+The name of a quality of the voice or the audio, such as a manner of speaking, a vocal timbre or a background sound; see the [full list of voice attributes](/expression-measurement/docs/audio/measurements#voice-attributes). Names are lowercase and may contain spaces and punctuation. New names may be added over time; treat a name you do not recognize as a new prediction.
 """

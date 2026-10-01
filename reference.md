@@ -1,6 +1,6 @@
 # Reference
-## voice
-<details><summary><code>client.voice.<a href="src/hume_expression_measurement/voice/client.py">measure</a>(...) -> VoiceFileResponse</code></summary>
+## audio
+<details><summary><code>client.audio.<a href="src/hume_expression_measurement/audio/client.py">measure</a>(...) -> AudioFileResponse</code></summary>
 <dl>
 <dd>
 
@@ -52,7 +52,7 @@ client = ExpressionMeasurementClient(
     environment=ExpressionMeasurementClientEnvironment.PRODUCTION,
 )
 
-client.voice.measure(
+client.audio.measure(
     file="example_file",
 )
 
@@ -78,7 +78,7 @@ client.voice.measure(
 <dl>
 <dd>
 
-**config:** `typing.Optional[VoiceFileConfig]` 
+**config:** `typing.Optional[AudioFileConfig]` 
     
 </dd>
 </dl>
@@ -98,8 +98,8 @@ client.voice.measure(
 </dl>
 </details>
 
-## face
-<details><summary><code>client.face.<a href="src/hume_expression_measurement/face/client.py">measure</a>(...) -> FaceFileResponse</code></summary>
+## video
+<details><summary><code>client.video.<a href="src/hume_expression_measurement/video/client.py">measure</a>(...) -> VideoFileResponse</code></summary>
 <dl>
 <dd>
 
@@ -151,7 +151,7 @@ client = ExpressionMeasurementClient(
     environment=ExpressionMeasurementClientEnvironment.PRODUCTION,
 )
 
-client.face.measure(
+client.video.measure(
     file=["example_file"],
 )
 
@@ -177,7 +177,7 @@ client.face.measure(
 <dl>
 <dd>
 
-**config:** `typing.Optional[FaceFileConfig]` 
+**config:** `typing.Optional[VideoFileConfig]` 
     
 </dd>
 </dl>
@@ -410,7 +410,7 @@ client.runs.get(
 <dl>
 <dd>
 
-The problems the run reported, in order: frames it rejected and failures it hit. A run that went well has none. Only realtime sessions record them, except `video_recording_abandoned`, which a face file run can also record.
+The problems the run reported, in order: frames it rejected and failures it hit. A run that went well has none. Only realtime sessions record them, except `video_recording_abandoned`, which a video file run can also record.
 </dd>
 </dl>
 </dd>
