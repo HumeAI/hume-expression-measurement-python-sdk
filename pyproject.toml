@@ -6,7 +6,7 @@ license-files = ["LICENSE"]
 
 [tool.poetry]
 name = "hume-expression-measurement"
-version = "0.0.120"
+version = "0.0.128"
 description = "A Python SDK for the Hume Expression Measurement API"
 readme = "README.md"
 authors = []

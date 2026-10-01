@@ -48,7 +48,7 @@ class RunSummary(UniversalBaseModel):
 
     bytes_received: typing.Optional[int] = pydantic.Field(default=None)
     """
-    Bytes of media the server took in. A realtime face frame counts once it passes the send-rate and capacity checks, even if it is then rejected as invalid. Null until the run ends, and for a run whose end was never recorded.
+    Bytes of media the server took in. A realtime video frame counts once it passes the send-rate and capacity checks, even if it is then rejected as invalid. Null until the run ends, and for a run whose end was never recorded.
     """
 
     bytes_recorded: typing.Optional[int] = pydantic.Field(default=None)
@@ -58,7 +58,7 @@ class RunSummary(UniversalBaseModel):
 
     metered_seconds: float = pydantic.Field()
     """
-    Billable seconds for the run. For voice, this is the duration of the audio the server took in. For face, each frame or image the server took in counts as one third of a second, regardless of frame rate, including a realtime frame rejected as invalid after it passed the send-rate and capacity checks. Updated while a realtime run is in progress. A file request that fails is not billed, and a run recorded for it reports 0.
+    Billable seconds for the run. For audio, this is the duration of the audio the server took in. For video, each frame or image the server took in counts as one third of a second, regardless of frame rate, including a realtime frame rejected as invalid after it passed the send-rate and capacity checks. Updated while a realtime run is in progress. A file request that fails is not billed, and a run recorded for it reports 0.
     """
 
     if IS_PYDANTIC_V2:

@@ -22,7 +22,7 @@ class Error(UniversalBaseModel):
 
     retryable: bool = pydantic.Field()
     """
-    `false` for every error that ends the session. `true` for every error the session survives, except `internal_error` on the face endpoint, where it reports whether the failure was temporary and the frame is worth resending.
+    `false` for every error that ends the session. `true` for every error the session survives, except `internal_error` on the video endpoint, where it reports whether the failure was temporary and the frame is worth resending.
     """
 
     if IS_PYDANTIC_V2:

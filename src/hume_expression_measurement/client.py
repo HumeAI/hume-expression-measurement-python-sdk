@@ -12,9 +12,9 @@ from .core.logging import LogConfig, Logger
 from .environment import ExpressionMeasurementClientEnvironment
 
 if typing.TYPE_CHECKING:
-    from .face.client import AsyncFaceClient, FaceClient
+    from .audio.client import AsyncAudioClient, AudioClient
     from .runs.client import AsyncRunsClient, RunsClient
-    from .voice.client import AsyncVoiceClient, VoiceClient
+    from .video.client import AsyncVideoClient, VideoClient
 
 
 class ExpressionMeasurementClient:
@@ -99,25 +99,25 @@ class ExpressionMeasurementClient:
             max_stream_reconnection_attempts=max_stream_reconnection_attempts,
             logging=logging,
         )
-        self._voice: typing.Optional[VoiceClient] = None
-        self._face: typing.Optional[FaceClient] = None
+        self._audio: typing.Optional[AudioClient] = None
+        self._video: typing.Optional[VideoClient] = None
         self._runs: typing.Optional[RunsClient] = None
 
     @property
-    def voice(self):
-        if self._voice is None:
-            from .voice.client import VoiceClient  # noqa: E402
+    def audio(self):
+        if self._audio is None:
+            from .audio.client import AudioClient  # noqa: E402
 
-            self._voice = VoiceClient(client_wrapper=self._client_wrapper)
-        return self._voice
+            self._audio = AudioClient(client_wrapper=self._client_wrapper)
+        return self._audio
 
     @property
-    def face(self):
-        if self._face is None:
-            from .face.client import FaceClient  # noqa: E402
+    def video(self):
+        if self._video is None:
+            from .video.client import VideoClient  # noqa: E402
 
-            self._face = FaceClient(client_wrapper=self._client_wrapper)
-        return self._face
+            self._video = VideoClient(client_wrapper=self._client_wrapper)
+        return self._video
 
     @property
     def runs(self):
@@ -226,25 +226,25 @@ class AsyncExpressionMeasurementClient:
             max_stream_reconnection_attempts=max_stream_reconnection_attempts,
             logging=logging,
         )
-        self._voice: typing.Optional[AsyncVoiceClient] = None
-        self._face: typing.Optional[AsyncFaceClient] = None
+        self._audio: typing.Optional[AsyncAudioClient] = None
+        self._video: typing.Optional[AsyncVideoClient] = None
         self._runs: typing.Optional[AsyncRunsClient] = None
 
     @property
-    def voice(self):
-        if self._voice is None:
-            from .voice.client import AsyncVoiceClient  # noqa: E402
+    def audio(self):
+        if self._audio is None:
+            from .audio.client import AsyncAudioClient  # noqa: E402
 
-            self._voice = AsyncVoiceClient(client_wrapper=self._client_wrapper)
-        return self._voice
+            self._audio = AsyncAudioClient(client_wrapper=self._client_wrapper)
+        return self._audio
 
     @property
-    def face(self):
-        if self._face is None:
-            from .face.client import AsyncFaceClient  # noqa: E402
+    def video(self):
+        if self._video is None:
+            from .video.client import AsyncVideoClient  # noqa: E402
 
-            self._face = AsyncFaceClient(client_wrapper=self._client_wrapper)
-        return self._face
+            self._video = AsyncVideoClient(client_wrapper=self._client_wrapper)
+        return self._video
 
     @property
     def runs(self):

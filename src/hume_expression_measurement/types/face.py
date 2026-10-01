@@ -5,8 +5,8 @@ import typing
 import pydantic
 from ..core.pydantic_utilities import IS_PYDANTIC_V2, UniversalBaseModel
 from .bounding_box import BoundingBox
-from .face_description_score import FaceDescriptionScore
-from .face_expression_score import FaceExpressionScore
+from .video_description_score import VideoDescriptionScore
+from .video_expression_score import VideoExpressionScore
 
 
 class Face(UniversalBaseModel):
@@ -25,12 +25,12 @@ class Face(UniversalBaseModel):
     Confidence that the bounding box contains a face. Always at or above the configured `threshold`. Unrelated to the expression scores.
     """
 
-    expressions: typing.List[FaceExpressionScore] = pydantic.Field()
+    expressions: typing.List[VideoExpressionScore] = pydantic.Field()
     """
     Expressions detected on the face, such as `amusement`, `interest` and `surprise (positive)`, in descending order of probability, then by name. Only scores above 0.1 are included, so the array may be empty. `probability` is the chance a human rater would name the expression for this face, independently for each expression.
     """
 
-    descriptions: typing.List[FaceDescriptionScore] = pydantic.Field()
+    descriptions: typing.List[VideoDescriptionScore] = pydantic.Field()
     """
     Visible facial actions, such as `smile`, `jaw drop` and `wide-eyed`, in descending order of probability, then by name. Only scores above 0.1 are included, so the array may be empty.
     """
