@@ -10,7 +10,7 @@ import wave
 import numpy as np
 import pytest
 
-from hume_expression_measurement.audio import MissingDependencyError, iter_wav_frames
+from hume_expression_measurement.audio_helpers import MissingDependencyError, iter_wav_frames
 
 
 def _write_wav(path: pathlib.Path, *, sample_rate: int, channels: int, sample_width: int, data: bytes) -> pathlib.Path:
@@ -34,8 +34,11 @@ def _write_raw_wav(
     fmt_extra: bytes = b"",
     data_size: typing.Optional[int] = None,
     after_data: bytes = b"",
+    block_align: typing.Optional[int] = None,
+    riff_size: typing.Optional[int] = None,
 ) -> pathlib.Path:
-    block_align = channels * ((bits + 7) // 8)
+    if block_align is None:
+        block_align = channels * ((bits + 7) // 8)
     # The reader ignores the byte rate, so an overflowing value is truncated to fit its field.
     byte_rate = (sample_rate * block_align) & 0xFFFFFFFF
     fmt = struct.pack("<HHIIHH", 0xFFFE if extensible else tag, channels, sample_rate, byte_rate, block_align, bits)
@@ -48,7 +51,7 @@ def _write_raw_wav(
     body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"\x00" * (len(fmt) % 2)
     body += b"LIST" + struct.pack("<I", len(info)) + info + b"\x00"
     body += b"data" + struct.pack("<I", len(data) if data_size is None else data_size) + data + after_data
-    path.write_bytes(b"RIFF" + struct.pack("<I", len(body)) + body)
+    path.write_bytes(b"RIFF" + struct.pack("<I", len(body) if riff_size is None else riff_size) + body)
     return path
 
 
@@ -144,6 +147,36 @@ def test_data_of_unknown_size_is_read_to_the_end_of_the_file(tmp_path: pathlib.P
     assert b"".join(iter_wav_frames(path)) == pcm
 
 
+def test_recording_that_was_never_closed_is_read_to_the_end_of_the_file(tmp_path: pathlib.Path) -> None:
+    pcm = np.arange(-800, 800, dtype="<i2").tobytes()
+    # libsndfile writes a RIFF size of 8 and a data size of 0 when it opens a file, and the real sizes
+    # when it closes it.
+    path = _write_raw_wav(
+        tmp_path / "killed.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=pcm, data_size=0, riff_size=8
+    )
+
+    assert b"".join(iter_wav_frames(path)) == pcm
+
+
+@pytest.mark.parametrize("riff_size", [None, 0xFFFFFFFF])
+def test_empty_data_chunk_followed_by_metadata_gives_no_frames(
+    tmp_path: pathlib.Path, riff_size: typing.Optional[int]
+) -> None:
+    id3 = b"id3 " + struct.pack("<I", 64) + bytes(range(64))
+    path = _write_raw_wav(
+        tmp_path / "tagged.wav",
+        tag=1,
+        sample_rate=16000,
+        channels=1,
+        bits=16,
+        data=b"",
+        after_data=id3,
+        riff_size=riff_size,
+    )
+
+    assert list(iter_wav_frames(path)) == []
+
+
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs os.mkfifo")
 def test_wav_from_a_pipe_is_read(tmp_path: pathlib.Path) -> None:
     pcm = np.arange(-800, 800, dtype="<i2").tobytes()
@@ -176,6 +209,32 @@ def test_12_bit_samples_are_read_from_the_high_bits_of_16_bit_containers(tmp_pat
     )
 
     assert np.frombuffer(b"".join(iter_wav_frames(path)), dtype="<i2").tolist() == [0, 16384, -32768, 32752]
+
+
+def test_sample_rate_below_1_khz_is_rejected_with_a_conversion_command(tmp_path: pathlib.Path) -> None:
+    path = _write_raw_wav(tmp_path / "crafted.wav", tag=1, sample_rate=999, channels=1, bits=16, data=bytes(100))
+
+    with pytest.raises(ValueError, match="999 Hz is below the minimum of 1000 Hz.*ffmpeg -i input.wav"):
+        next(iter_wav_frames(path))
+
+
+@pytest.mark.parametrize("block_align", [0, 1])
+def test_block_size_left_at_0_or_1_is_ignored(tmp_path: pathlib.Path, block_align: int) -> None:
+    pcm = np.arange(-800, 800, dtype="<i2").tobytes()
+    path = _write_raw_wav(
+        tmp_path / "speech.wav", tag=1, sample_rate=16000, channels=1, bits=16, data=pcm, block_align=block_align
+    )
+
+    assert b"".join(iter_wav_frames(path)) == pcm
+
+
+def test_block_size_larger_than_one_sample_per_channel_is_rejected(tmp_path: pathlib.Path) -> None:
+    path = _write_raw_wav(
+        tmp_path / "padded.wav", tag=1, sample_rate=16000, channels=2, bits=24, data=bytes(64), block_align=8
+    )
+
+    with pytest.raises(ValueError, match="the fmt chunk is inconsistent"):
+        next(iter_wav_frames(path))
 
 
 def test_floating_point_depth_other_than_32_or_64_bits_is_rejected(tmp_path: pathlib.Path) -> None:
@@ -226,6 +285,17 @@ def test_rf64_file_is_rejected_with_a_conversion_command(tmp_path: pathlib.Path)
 def test_frame_duration_out_of_range_is_rejected_at_call_time(tmp_path: pathlib.Path, frame_ms: int) -> None:
     with pytest.raises(ValueError, match="frame_ms must be between 1 and 10000"):
         iter_wav_frames(tmp_path / "unused.wav", frame_ms=frame_ms)
+
+
+def test_numpy_integer_frame_duration_gives_frames_of_that_duration(tmp_path: pathlib.Path) -> None:
+    pcm = np.arange(48000, dtype="<i2").tobytes()
+    path = _write_wav(tmp_path / "speech.wav", sample_rate=16000, channels=1, sample_width=2, data=pcm)
+
+    # 2500 ms in bytes overflows int16 to a size that is wrong but positive, so a regression gives
+    # short frames rather than a hang.
+    frames = list(iter_wav_frames(path, frame_ms=typing.cast(typing.Any, np.int16(2500))))
+
+    assert [len(frame) for frame in frames] == [80000, 16000]
 
 
 def test_frame_duration_that_is_not_an_integer_is_rejected_at_call_time(tmp_path: pathlib.Path) -> None:

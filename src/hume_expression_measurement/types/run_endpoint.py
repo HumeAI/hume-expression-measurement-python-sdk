@@ -2,4 +2,4 @@
 
 import typing
 
-RunEndpoint = typing.Union[typing.Literal["voice", "face"], typing.Any]
+RunEndpoint = typing.Union[typing.Literal["audio", "video"], typing.Any]

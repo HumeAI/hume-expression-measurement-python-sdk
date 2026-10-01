@@ -211,13 +211,13 @@ asyncio.run(main())
 
 ## Audio helpers
 
-`hume_expression_measurement.audio` records from a microphone and converts audio of any sample rate and channel count into frames for the realtime voice endpoint. Install it with the `audio` extra:
+`hume_expression_measurement.audio_helpers` records from a microphone and converts audio at any sample rate from 1 kHz and any channel count into frames for the realtime voice endpoint. Install it with the `audio` extra:
 
 ```bash
 pip install "hume-expression-measurement[audio]"
 ```
 
-The extra installs numpy, sounddevice, and soxr. soxr is licensed under the LGPL 2.1 or later and is installed only with this extra. On Linux, sounddevice also needs the PortAudio library, for example `sudo apt-get install libportaudio2` on Debian and Ubuntu. If the extra is missing, importing `hume_expression_measurement.audio` or calling a helper raises `MissingDependencyError`, whose message gives the install command.
+The extra installs numpy, sounddevice, and soxr. soxr is licensed under the LGPL 2.1 or later and is installed only with this extra. On Linux, sounddevice also needs the PortAudio library, for example `sudo apt-get install libportaudio2` on Debian and Ubuntu. If the extra is missing, importing `hume_expression_measurement.audio_helpers` or calling a helper raises `MissingDependencyError`, whose message gives the install command.
 
 ### Microphone
 
@@ -233,7 +233,7 @@ from hume_expression_measurement import (
     VoiceMeasurementResult,
     VoiceSessionClosed,
 )
-from hume_expression_measurement.audio import Microphone
+from hume_expression_measurement.audio_helpers import Microphone
 
 
 async def main() -> None:
@@ -272,14 +272,14 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-The device records at its own sample rate, and the SDK converts the first channel to 16 kHz mono. Each `async for` yields only audio recorded after it starts, so a push-to-talk loop never sends stale audio. If the loop body is too slow and more than 10 seconds of audio builds up, iteration raises a `RuntimeError`. An unknown device, or one that is not an input device, raises a `ValueError` that lists the available input devices. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
+The device records at its own sample rate, and the SDK converts its audio to 16 kHz mono. Each `async for` yields only audio recorded after it starts, so a push-to-talk loop that starts a new `async for` for each press never sends audio recorded between presses. If the loop body is too slow and more than 10 seconds of audio builds up, iteration raises a `RuntimeError`. An unknown device, one that is not an input device, or a name that matches several devices raises a `ValueError` that lists the available input devices. On Windows, where each device is listed once per host API, add the host API to the name, for example `"Microphone WASAPI"`, or pass the index. On macOS, the first recording asks permission for the terminal or app running Python; if access is denied, the device records silence.
 
 ### WAV files
 
-`iter_wav_frames` reads 8, 16, 24, or 32-bit integer and 32 or 64-bit floating-point WAV at any sample rate and channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
+`iter_wav_frames` reads 8, 16, 24, or 32-bit integer and 32 or 64-bit floating-point WAV at any sample rate from 1 kHz and any channel count and yields 100 ms frames. It replaces the file loop in the [realtime quickstart](#quickstart-realtime):
 
 ```python
-from hume_expression_measurement.audio import iter_wav_frames
+from hume_expression_measurement.audio_helpers import iter_wav_frames
 
 with client.voice.connect() as socket:
     for frame in iter_wav_frames("recording.wav"):
@@ -294,7 +294,7 @@ Frames are produced as fast as the file is read, so pace the sends for a file lo
 `Resampler` converts a stream you already have, as bytes or NumPy arrays, block by block. Pass each block to `process`, then call `flush` after the last one. `process` can return an empty result while the filter fills, and the endpoint rejects empty frames, so check before sending. The endpoint also rejects frames longer than 10 seconds, so pass a long recording in blocks of about 100 ms rather than in one call, and pace the sends for a recording longer than 30 seconds.
 
 ```python
-from hume_expression_measurement.audio import Resampler
+from hume_expression_measurement.audio_helpers import Resampler
 
 resampler = Resampler(sample_rate=48000, channels=2, sample_format="int16")
 for block in blocks:

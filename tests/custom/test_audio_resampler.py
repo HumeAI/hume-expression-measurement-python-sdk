@@ -1,11 +1,12 @@
 import sys
 import typing
+import warnings
 
 import numpy as np
 import numpy.typing as npt
 import pytest
 
-from hume_expression_measurement.audio import MissingDependencyError, Resampler
+from hume_expression_measurement.audio_helpers import MissingDependencyError, Resampler
 
 
 def _tone(frequency: float, sample_rate: int, seconds: float = 1.0, amplitude: float = 0.5) -> npt.NDArray[np.float32]:
@@ -104,6 +105,23 @@ def test_resampler_can_take_a_new_stream_after_flush() -> None:
     assert second.tolist() == first.tolist()
 
 
+def test_resampler_can_take_a_new_stream_after_a_flush_that_raises() -> None:
+    resampler = Resampler(sample_rate=48000, channels=1, sample_format="float32")
+    audio = _tone(1000, 48000)
+    audio[-1] = np.nan
+    resampler.process(audio)
+
+    # Converting NaN to int16 warns, so with warnings raised as errors the flush fails after soxr
+    # has been given the last block.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        with pytest.raises(RuntimeWarning):
+            resampler.flush()
+
+    expected = _convert(Resampler(sample_rate=48000, channels=1, sample_format="float32"), _tone(1000, 48000))
+    assert _convert(resampler, _tone(1000, 48000)).tolist() == expected.tolist()
+
+
 def test_array_with_the_wrong_dtype_or_shape_is_rejected() -> None:
     resampler = Resampler(sample_rate=16000, channels=2)
 
@@ -113,15 +131,24 @@ def test_array_with_the_wrong_dtype_or_shape_is_rejected() -> None:
         resampler.process(np.zeros((4, 3), dtype=np.int16))
 
 
-@pytest.mark.parametrize("sample_rate", [0, 2**32])
-def test_sample_rate_out_of_range_is_rejected(sample_rate: int) -> None:
-    with pytest.raises(ValueError, match="sample_rate must be between 1 and 4294967295"):
+def test_float_sample_rate_converts_like_the_integer_rate() -> None:
+    # sounddevice reports sample rates as floats.
+    expected = _convert(Resampler(sample_rate=48000, channels=1, sample_format="float32"), _tone(1000, 48000))
+
+    out = _convert(Resampler(sample_rate=48000.0, channels=1, sample_format="float32"), _tone(1000, 48000))
+
+    assert out.tolist() == expected.tolist()
+
+
+@pytest.mark.parametrize("sample_rate", [999, 2**32, float("nan"), float("inf")])
+def test_sample_rate_out_of_range_is_rejected(sample_rate: float) -> None:
+    with pytest.raises(ValueError, match="sample_rate must be between 1000 and 4294967295"):
         Resampler(sample_rate=sample_rate, channels=1)
 
 
-def test_sample_rate_that_is_not_an_integer_is_rejected() -> None:
-    with pytest.raises(TypeError, match="sample_rate must be an integer, got nan"):
-        Resampler(sample_rate=typing.cast(typing.Any, float("nan")), channels=1)
+def test_sample_rate_that_is_not_a_number_is_rejected() -> None:
+    with pytest.raises(TypeError, match="sample_rate must be a number, got '48000'"):
+        Resampler(sample_rate=typing.cast(typing.Any, "48000"), channels=1)
 
 
 def test_channel_count_that_is_not_an_integer_is_rejected() -> None:

@@ -2,7 +2,7 @@
 
 import typing
 
-from .face_run_config import FaceRunConfig
-from .voice_run_config import VoiceRunConfig
+from .audio_run_config import AudioRunConfig
+from .video_run_config import VideoRunConfig
 
-RunConfig = typing.Union[VoiceRunConfig, FaceRunConfig]
+RunConfig = typing.Union[AudioRunConfig, VideoRunConfig]
