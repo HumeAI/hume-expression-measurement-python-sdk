@@ -128,7 +128,7 @@ The server detects the faces in each image. It does not measure a face whose det
 | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
 | Faces measured per image | 64 |
 
-Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded, or a server at capacity, can still fail the request with `image_decode_failed` or a `503` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
+Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded can still fail the request with `image_decode_failed` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
 </dd>
 </dl>
 </dd>

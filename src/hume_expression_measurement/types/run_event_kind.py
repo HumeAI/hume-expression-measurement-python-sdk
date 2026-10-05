@@ -7,7 +7,6 @@ RunEventKind = typing.Union[
         "invalid_audio_frame",
         "invalid_image_frame",
         "rate_limited",
-        "overloaded",
         "inference_failed",
         "message_too_large",
         "video_recording_abandoned",

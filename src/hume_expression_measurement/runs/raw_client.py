@@ -16,7 +16,6 @@ from ..errors.bad_request_error import BadRequestError
 from ..errors.internal_server_error import InternalServerError
 from ..errors.method_not_allowed_error import MethodNotAllowedError
 from ..errors.not_found_error import NotFoundError
-from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
 from ..types.authentication_error import AuthenticationError
 from ..types.error_body import ErrorBody
@@ -153,17 +152,6 @@ class RawRunsClient:
                         ),
                     ),
                 )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
             _response_json = _response.json()
         except JSONDecodeError:
             raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response.text)
@@ -241,17 +229,6 @@ class RawRunsClient:
                 )
             if _response.status_code == 500:
                 raise InternalServerError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
                     headers=dict(_response.headers),
                     body=typing.cast(
                         ErrorBody,
@@ -366,17 +343,6 @@ class RawRunsClient:
                 )
             if _response.status_code == 500:
                 raise InternalServerError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
                     headers=dict(_response.headers),
                     body=typing.cast(
                         ErrorBody,
@@ -520,17 +486,6 @@ class AsyncRawRunsClient:
                         ),
                     ),
                 )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
             _response_json = _response.json()
         except JSONDecodeError:
             raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response.text)
@@ -610,17 +565,6 @@ class AsyncRawRunsClient:
                 )
             if _response.status_code == 500:
                 raise InternalServerError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
                     headers=dict(_response.headers),
                     body=typing.cast(
                         ErrorBody,
@@ -735,17 +679,6 @@ class AsyncRawRunsClient:
                 )
             if _response.status_code == 500:
                 raise InternalServerError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
                     headers=dict(_response.headers),
                     body=typing.cast(
                         ErrorBody,
