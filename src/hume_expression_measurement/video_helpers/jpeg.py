@@ -38,7 +38,7 @@ class JpegSplitter:
     --------
     import time
 
-    from hume_expression_measurement.video_helpers import JpegSplitter, VideoFrame
+    from hume_expression_measurement.video_helpers import JpegSplitter, VideoFrame, stream_video
 
     async def frames_from(mjpeg):
         splitter = JpegSplitter()
@@ -46,6 +46,9 @@ class JpegSplitter:
         async for chunk in mjpeg:
             for data in splitter.push(chunk):
                 yield VideoFrame(data=data, timestamp_ms=(time.monotonic() - start) * 1000)
+
+    async for reply in stream_video(socket, frames_from(mjpeg), live=True):
+        print(reply.timestamp_ms, reply.error.code if reply.error else len(reply.result.faces))
     """
 
     def __init__(self) -> None:
