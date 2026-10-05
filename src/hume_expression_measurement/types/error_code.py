@@ -8,7 +8,6 @@ ErrorCode = typing.Union[
         "invalid_image_frame",
         "message_invalid",
         "rate_limited",
-        "overloaded",
         "config_invalid",
         "message_too_large",
         "internal_error",

@@ -23,7 +23,6 @@ from ..errors.content_too_large_error import ContentTooLargeError
 from ..errors.forbidden_error import ForbiddenError
 from ..errors.internal_server_error import InternalServerError
 from ..errors.method_not_allowed_error import MethodNotAllowedError
-from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
 from ..errors.unsupported_media_type_error import UnsupportedMediaTypeError
 from ..types.authentication_error import AuthenticationError
@@ -71,7 +70,7 @@ class RawVideoClient:
         | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
-        Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded, or a server at capacity, can still fail the request with `image_decode_failed` or a `503` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
+        Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded can still fail the request with `image_decode_failed` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
 
         Parameters
         ----------
@@ -192,17 +191,6 @@ class RawVideoClient:
                         ),
                     ),
                 )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
             _response_json = _response.json()
         except JSONDecodeError:
             raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response.text)
@@ -221,15 +209,15 @@ class RawVideoClient:
 
         Send each frame as one binary message containing a complete JPEG image. Every frame receives a reply: a `measurement.result`, or an `error` if the frame was rejected or its measurement failed. A frame that is empty, is not a JPEG, or has more pixels than the limit is rejected with `invalid_image_frame`. Any message larger than the message size limit, whether a frame or a text message, ends the session with `message_too_large`.
 
-        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame that passes the send-rate and capacity checks, even if that frame is then rejected with `invalid_image_frame` because it is not a JPEG. An empty frame, or one rejected with `rate_limited` or `overloaded`, does not lock it. A `session.update` after that ends the session with `config_invalid`.
+        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame that passes the send-rate check, even if that frame is then rejected with `invalid_image_frame` because it is not a JPEG. An empty frame, or one rejected with `rate_limited`, does not lock it. A `session.update` after that ends the session with `config_invalid`.
 
-        The server accepts the first 30 frames immediately, then 30 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and a frame that arrives while the server is at capacity is rejected with `overloaded`. In both cases the frame is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again.
+        The server accepts the first 8 frames immediately, then 4 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again. A frame within the limit is never rejected because the server is busy: it waits until the server can measure it, so under heavy load replies take longer instead.
 
         If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`. Only frames sent for measurement count: a frame that is rejected, or has no faces to measure, neither adds to the count nor resets it.
 
         ## Matching results to frames
 
-        Replies arrive in the order you sent the frames, one reply per frame, so pair them by position. Keep a queue of the frames you have sent. Remove the oldest for each `measurement.result`, and for each `error` whose code is `invalid_image_frame`, `rate_limited`, `overloaded` or `internal_error`. Other errors, such as `message_invalid`, reply to a text message and do not consume a frame, and an error that ends the session needs no pairing. Frames sent before `session.close` receive their replies before `session.closed`.
+        Replies arrive in the order you sent the frames, one reply per frame, so pair them by position. Keep a queue of the frames you have sent. Remove the oldest for each `measurement.result`, and for each `error` whose code is `invalid_image_frame`, `rate_limited` or `internal_error`. Other errors, such as `message_invalid`, reply to a text message and do not consume a frame, and an error that ends the session needs no pairing. Frames sent before `session.close` receive their replies before `session.closed`.
 
         `frame_id` counts results, not the frames you sent: it starts at 0 and does not advance for a frame that received an `error`, so do not use it as an index into your own frames.
 
@@ -245,7 +233,7 @@ class RawVideoClient:
         |---|---|
         | Message size | 2MB |
         | Pixels per frame | 8,294,400 (the area of a 3840x2160 image) |
-        | Send rate | 30 frames immediately, then 30 frames per second |
+        | Send rate | 8 frames immediately, then 4 frames per second |
         | Faces measured per frame | 64 |
         | Consecutive measurement failures | 5, after which the session ends |
 
@@ -344,7 +332,7 @@ class AsyncRawVideoClient:
         | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
-        Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded, or a server at capacity, can still fail the request with `image_decode_failed` or a `503` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
+        Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded can still fail the request with `image_decode_failed` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
 
         Parameters
         ----------
@@ -465,17 +453,6 @@ class AsyncRawVideoClient:
                         ),
                     ),
                 )
-            if _response.status_code == 503:
-                raise ServiceUnavailableError(
-                    headers=dict(_response.headers),
-                    body=typing.cast(
-                        ErrorBody,
-                        parse_obj_as(
-                            type_=ErrorBody,  # type: ignore
-                            object_=_response.json(),
-                        ),
-                    ),
-                )
             _response_json = _response.json()
         except JSONDecodeError:
             raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response.text)
@@ -496,15 +473,15 @@ class AsyncRawVideoClient:
 
         Send each frame as one binary message containing a complete JPEG image. Every frame receives a reply: a `measurement.result`, or an `error` if the frame was rejected or its measurement failed. A frame that is empty, is not a JPEG, or has more pixels than the limit is rejected with `invalid_image_frame`. Any message larger than the message size limit, whether a frame or a text message, ends the session with `message_too_large`.
 
-        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame that passes the send-rate and capacity checks, even if that frame is then rejected with `invalid_image_frame` because it is not a JPEG. An empty frame, or one rejected with `rate_limited` or `overloaded`, does not lock it. A `session.update` after that ends the session with `config_invalid`.
+        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame that passes the send-rate check, even if that frame is then rejected with `invalid_image_frame` because it is not a JPEG. An empty frame, or one rejected with `rate_limited`, does not lock it. A `session.update` after that ends the session with `config_invalid`.
 
-        The server accepts the first 30 frames immediately, then 30 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and a frame that arrives while the server is at capacity is rejected with `overloaded`. In both cases the frame is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again.
+        The server accepts the first 8 frames immediately, then 4 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again. A frame within the limit is never rejected because the server is busy: it waits until the server can measure it, so under heavy load replies take longer instead.
 
         If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`. Only frames sent for measurement count: a frame that is rejected, or has no faces to measure, neither adds to the count nor resets it.
 
         ## Matching results to frames
 
-        Replies arrive in the order you sent the frames, one reply per frame, so pair them by position. Keep a queue of the frames you have sent. Remove the oldest for each `measurement.result`, and for each `error` whose code is `invalid_image_frame`, `rate_limited`, `overloaded` or `internal_error`. Other errors, such as `message_invalid`, reply to a text message and do not consume a frame, and an error that ends the session needs no pairing. Frames sent before `session.close` receive their replies before `session.closed`.
+        Replies arrive in the order you sent the frames, one reply per frame, so pair them by position. Keep a queue of the frames you have sent. Remove the oldest for each `measurement.result`, and for each `error` whose code is `invalid_image_frame`, `rate_limited` or `internal_error`. Other errors, such as `message_invalid`, reply to a text message and do not consume a frame, and an error that ends the session needs no pairing. Frames sent before `session.close` receive their replies before `session.closed`.
 
         `frame_id` counts results, not the frames you sent: it starts at 0 and does not advance for a frame that received an `error`, so do not use it as an index into your own frames.
 
@@ -520,7 +497,7 @@ class AsyncRawVideoClient:
         |---|---|
         | Message size | 2MB |
         | Pixels per frame | 8,294,400 (the area of a 3840x2160 image) |
-        | Send rate | 30 frames immediately, then 30 frames per second |
+        | Send rate | 8 frames immediately, then 4 frames per second |
         | Faces measured per frame | 64 |
         | Consecutive measurement failures | 5, after which the session ends |
 

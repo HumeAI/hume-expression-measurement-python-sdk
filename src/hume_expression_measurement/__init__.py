@@ -102,7 +102,6 @@ if typing.TYPE_CHECKING:
         InternalServerError,
         MethodNotAllowedError,
         NotFoundError,
-        ServiceUnavailableError,
         UnauthorizedError,
         UnsupportedMediaTypeError,
     )
@@ -178,7 +177,6 @@ _dynamic_imports: typing.Dict[str, str] = {
     "RunStatus": ".types",
     "RunSummary": ".types",
     "RunsPage": ".types",
-    "ServiceUnavailableError": ".errors",
     "SessionClose": ".types",
     "SessionCloseType": ".types",
     "SessionId": ".types",
@@ -308,7 +306,6 @@ __all__ = [
     "RunStatus",
     "RunSummary",
     "RunsPage",
-    "ServiceUnavailableError",
     "SessionClose",
     "SessionCloseType",
     "SessionId",

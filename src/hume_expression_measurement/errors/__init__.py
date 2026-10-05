@@ -12,7 +12,6 @@ if typing.TYPE_CHECKING:
     from .internal_server_error import InternalServerError
     from .method_not_allowed_error import MethodNotAllowedError
     from .not_found_error import NotFoundError
-    from .service_unavailable_error import ServiceUnavailableError
     from .unauthorized_error import UnauthorizedError
     from .unsupported_media_type_error import UnsupportedMediaTypeError
 _dynamic_imports: typing.Dict[str, str] = {
@@ -22,7 +21,6 @@ _dynamic_imports: typing.Dict[str, str] = {
     "InternalServerError": ".internal_server_error",
     "MethodNotAllowedError": ".method_not_allowed_error",
     "NotFoundError": ".not_found_error",
-    "ServiceUnavailableError": ".service_unavailable_error",
     "UnauthorizedError": ".unauthorized_error",
     "UnsupportedMediaTypeError": ".unsupported_media_type_error",
 }
@@ -56,7 +54,6 @@ __all__ = [
     "InternalServerError",
     "MethodNotAllowedError",
     "NotFoundError",
-    "ServiceUnavailableError",
     "UnauthorizedError",
     "UnsupportedMediaTypeError",
 ]
