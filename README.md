@@ -209,6 +209,59 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## Reconnecting
+
+A session cannot be resumed: a new connection is a new server session, with a new session ID (and run ID) and the default configuration. `connect_audio` and `connect_video` from `hume_expression_measurement.reconnect` open a session that reconnects when the server restarts or the connection drops, and send each new session the last `session.update`. They take the sync or the async client, and the session is a context manager (`async with` for the async client) that opens the first session on entry.
+
+```python
+import asyncio
+
+from hume_expression_measurement import AsyncExpressionMeasurementClient, AudioMeasurementResult, AudioSessionUpdate
+from hume_expression_measurement.reconnect import Reconnected, Reconnecting, connect_audio
+
+
+async def main() -> None:
+    client = AsyncExpressionMeasurementClient()
+    update = AudioSessionUpdate(type="session.update", measurement_timer_ms=5000)
+    async with connect_audio(client.audio, session_update=update) as session:
+
+        async def send() -> None:
+            with open("speech.pcm", "rb") as audio:
+                while frame := audio.read(3200):
+                    await session.send_audio_frame(frame)
+                    await asyncio.sleep(0.1)
+            await session.send_session_close()
+
+        sender = asyncio.create_task(send())
+        async for item in session:
+            if isinstance(item, Reconnecting):
+                print(f"connection ended with {item.code}; retrying in {item.delay:.2f} s")
+            elif isinstance(item, Reconnected):
+                print(f"session {item.previous_session_id} continues as {item.session_id}")
+            elif isinstance(item, AudioMeasurementResult):
+                print(item.expressions[:3])
+        await sender
+    print(session.ended)
+
+
+asyncio.run(main())
+```
+
+Iteration is what notices a dropped connection and reconnects, so keep iterating while you send. With the sync client, iterate in one thread and send from another.
+
+| How the connection ended | What happens |
+|---|---|
+| Close code 1012, or `session.closed` with `reason` `server_shutdown` | Reconnects within 0.25 seconds. |
+| No close frame (1006), or close code 1001 | Reconnects within 0.25 seconds. |
+| Close code 1013, 1011 or 1014, or a handshake rejected with HTTP 503, 502, 504 or 429 | Reconnects after a backoff that starts at `initial_delay` (1 second) and doubles each attempt, up to `max_delay` (30 seconds), with jitter. A `Retry-After` header on a rejected handshake sets the least wait. |
+| Close code 1000 (`session.close`, idle timeout), 1008 (a session-ending error), any 4000 to 4999 code, or a handshake rejected with HTTP 401, 403 or another 4xx | Ends the session. Entering raises `ApiError` if the first session cannot start. |
+| After `send_session_close()` or `close()` | Ends the session, whatever the code. |
+
+- **Attempts:** after `max_attempts` (6) consecutive failed attempts the session ends, and `session.ended.gave_up` is true. The count starts again once a session has stayed up for 10 seconds.
+- **Before the new session:** `send_audio_frame` and `send_image_frame` queue media instead of sending it, up to 30 seconds of audio or 8 frames, and drop the oldest beyond that. The new session gets the last `session.update`, then the queued media.
+- **Lost results:** media the old session had received but not yet answered gets no result. Video replies pair with frames by position, so clear any queue of sent frames on `Reconnected`. Utterance, frame and face IDs restart in the new session.
+- **Order:** iteration yields `Reconnecting` before each wait, then `Reconnected` before the new session's `session.created`.
+
 ## Audio helpers
 
 `hume_expression_measurement.audio_helpers` records from a microphone and converts audio at any sample rate from 1 kHz and any channel count into frames for the realtime audio endpoint. Install it with the `audio` extra:

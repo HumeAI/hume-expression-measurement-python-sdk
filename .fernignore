@@ -4,4 +4,5 @@ README.md
 .fern/replay.yml
 .gitattributes
 src/hume_expression_measurement/audio_helpers
+src/hume_expression_measurement/reconnect
 tests/custom
