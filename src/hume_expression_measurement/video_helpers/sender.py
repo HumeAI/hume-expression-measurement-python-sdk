@@ -7,6 +7,7 @@ import collections.abc
 import contextlib
 import dataclasses
 import itertools
+import json
 import math
 import time
 import typing
@@ -253,7 +254,12 @@ class VideoStream:
         async def read() -> ConnectionClosed:
             try:
                 while True:
-                    messages.append(await socket.recv())
+                    try:
+                        messages.append(await socket.recv())
+                    except json.JSONDecodeError:
+                        # Every reply is JSON, so other text answers no frame. Iterating the
+                        # socket skips it too.
+                        continue
                     wake.set()
             except ConnectionClosed as closed:
                 return closed
@@ -503,11 +509,15 @@ def _session_ended(closed: VideoSessionClosed, last_error: typing.Optional[Error
 
 def _connection_ended(closed: ConnectionClosed) -> SessionEndedError:
     cause = closed.__cause__
-    # An EOFError says only that the connection ended without a close frame, which code 1006 says too.
-    if cause is not None and not isinstance(cause, EOFError):
+    # An EOFError says only that the connection ended without a close frame, which code 1006 says
+    # too. A CancelledError says only that the client failed the connection itself, as it does
+    # when a keepalive ping goes unanswered or a write fails, and the close frame it sent, if any,
+    # says why.
+    if cause is not None and not isinstance(cause, (EOFError, asyncio.CancelledError)):
         return SessionEndedError(f"The connection failed before the session ended: {cause}")
-    code = _ABNORMAL_CLOSURE if closed.rcvd is None else closed.rcvd.code
-    reason = "" if closed.rcvd is None else closed.rcvd.reason
+    close = closed.rcvd if closed.rcvd is not None else closed.sent
+    code = _ABNORMAL_CLOSURE if close is None else close.code
+    reason = "" if close is None else close.reason
     return SessionEndedError(
         f"The connection closed with code {code} before the session ended{f': {reason}' if reason else '.'}"
     )

@@ -371,6 +371,34 @@ async def test_a_connection_error_raises_its_cause_rather_than_the_close_it_caus
             await _collect(stream_video(socket, _frames_of(_frame(0))))
 
 
+# Makes the call websockets makes when the server stops answering keepalive pings, which it would
+# otherwise notice only after 20 to 40 seconds.
+async def test_a_keepalive_timeout_raises_with_the_close_code_and_reason_the_client_sent() -> None:
+    async with _connect(lambda frame_id, attempt: [_RESULT] if frame_id == 0 else []) as (socket, _):
+
+        async def collect() -> None:
+            async for _ in stream_video(socket, _frames_of(_frame(0), _frame(1))):
+                socket._websocket.fail_connection(1011, "keepalive ping timeout")
+
+        with pytest.raises(
+            SessionEndedError,
+            match="^The connection closed with code 1011 before the session ended: keepalive ping timeout$",
+        ):
+            await asyncio.wait_for(collect(), _TIMEOUT)
+
+
+async def test_a_text_message_that_is_not_json_is_skipped() -> None:
+    async def send_text(server: _FakeServer, connection: ServerConnection) -> None:
+        await connection.send("not json")
+
+    async with _connect(lambda frame_id, attempt: [send_text, _RESULT]) as (socket, _):
+        stream = stream_video(socket, _frames_of(_frame(0), _frame(1)))
+
+        assert await _collect(stream) == ["0 result", "100 result"]
+        assert stream.closed is not None
+        assert stream.closed.reason == "client_request"
+
+
 # The server's close frame is written without closing, and the server stops reading, so it never
 # answers the client's own close frame. The client is left closing until the connection drops,
 # and frames it sends in that time wait for the close rather than fail with an error of their own.
