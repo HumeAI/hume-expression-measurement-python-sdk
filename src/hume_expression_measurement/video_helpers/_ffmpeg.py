@@ -47,7 +47,8 @@ def check_integer(name: str, value: int) -> int:
 
 
 def check_fps(fps: float) -> float:
-    if not isinstance(fps, numbers.Real):
+    # A bool is a number in Python, so True would otherwise run at 1 fps.
+    if isinstance(fps, bool) or not isinstance(fps, numbers.Real):
         raise TypeError(f"fps must be a number, got {fps!r}.")
     # Written so that NaN fails the check.
     if not 0 < fps <= MAX_FPS:

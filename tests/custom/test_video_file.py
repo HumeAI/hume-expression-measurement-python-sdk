@@ -153,9 +153,10 @@ def test_fps_out_of_range_is_rejected_at_call_time(fps: float) -> None:
         iter_video_frames("interview.mp4", fps=fps)
 
 
-def test_fps_that_is_not_a_number_is_rejected_at_call_time() -> None:
-    with pytest.raises(TypeError, match="fps must be a number, got '5'"):
-        iter_video_frames("interview.mp4", fps=typing.cast(typing.Any, "5"))
+@pytest.mark.parametrize("fps", ["5", True])
+def test_fps_that_is_not_a_number_is_rejected_at_call_time(fps: object) -> None:
+    with pytest.raises(TypeError, match=f"fps must be a number, got {fps!r}"):
+        iter_video_frames("interview.mp4", fps=typing.cast(typing.Any, fps))
 
 
 def test_max_width_below_16_or_not_an_integer_is_rejected_at_call_time() -> None:
