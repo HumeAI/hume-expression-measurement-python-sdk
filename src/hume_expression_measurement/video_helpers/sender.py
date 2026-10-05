@@ -122,16 +122,16 @@ def stream_video(
     retryable `internal_error` is sent once more. A frame over the 2 MB message limit would end the
     session, so it is not sent and is yielded as a `message_too_large` error.
 
-    Replies are yielded in the order of the frames. When the frames run out, the session is closed
-    and the remaining replies are yielded. `closed` then holds the session's totals, and the server
-    closes the connection.
+    Replies are yielded in the order of the frames. Once the frames run out and every frame has its
+    reply, the session is closed. `closed` then holds the session's totals, and the server closes
+    the connection.
 
     The stream reads every message from the socket while it runs. Send any `session.update` before
     streaming, because the configuration locks at the first frame. If iteration ends before the
-    session does, such as by leaving the loop early or an error from `frames`, the stream asks the
-    server to close the session and stops `frames`. A loop left early does this once the stream's
-    iterator is garbage collected; wrap `aiter(stream)` in `contextlib.aclosing` to do it as soon
-    as the block exits.
+    session does, such as by leaving the loop early or an error from `frames`, the session ends and
+    `frames` is stopped. A loop left early cleans up once the stream's iterator is garbage
+    collected, and if the connection has closed by then, the closed connection is what ends the
+    session. Wrap `aiter(stream)` in `contextlib.aclosing` to clean up as soon as the block exits.
 
     Parameters
     ----------
