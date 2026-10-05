@@ -54,11 +54,11 @@ class AudioClient:
 
         ## How measurements are produced
 
-        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, listed in `utterances` with its span in the audio. Every measurement in `measurements` carries the `utterance_id` it belongs to, the span of audio it covers as `audio_start_ms` and `audio_end_ms`, and a `trigger` saying why it was produced. All times count from the start of the audio.
+        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, listed in `utterances` with its span in the audio.
 
-        While an utterance is in progress, the server produces a measurement every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`. Each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter than that. Consecutive interval measurements therefore overlap; at the maximum `measurement_timer_ms` of 10000 they meet end to end instead. An interval measurement that falls as speech stops can end shortly after the utterance does, and no final measurement follows it.
-
-        When an utterance ends, the server produces a final measurement with `trigger` set to `speech_ended`, unless less than one second of speech has passed since the previous measurement ended. Every utterance produces at least one measurement, because the final measurement is skipped only when an interval measurement ended less than one second before it. Audio that ends while speech is in progress ends the utterance.
+        - **During speech:** a measurement is taken every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`.
+        - **When speech ends:** a final measurement is taken with `trigger` set to `speech_ended`, unless the previous measurement ended less than one second earlier. Every utterance gets at least one measurement, and audio that ends during speech ends the utterance.
+        - **Span:** each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter, so consecutive measurements can overlap. `audio_start_ms` and `audio_end_ms` give the span, counted from the start of the audio.
 
         ## Limits
 
@@ -67,7 +67,12 @@ class AudioClient:
         | Request size | 25MB, the whole multipart body |
         | Audio format | 16-bit PCM, 16 kHz, mono, as a WAV file or headerless samples |
 
-        A request over the size limit is rejected with `audio_too_long`. Audio in MP3, FLAC, Ogg, MP4 or a RIFF container other than WAV is rejected with `unsupported_media_type`; convert it before sending. Any other file with an even number of bytes is treated as headerless samples, so send only the formats listed here; an empty file, or one with an odd number of bytes, is rejected with `audio_decode_failed`. A WAV file that is truncated or malformed, is at another sample rate, channel count or sample format, or uses the extensible WAV header rather than plain PCM is rejected with `audio_decode_failed` rather than converted.
+        The server does not convert audio, so send it in the format above.
+
+        - **Too large:** a request over the size limit is rejected with `audio_too_long`.
+        - **Unsupported formats:** MP3, FLAC, Ogg, MP4 or M4A, and RIFF files other than WAV, are rejected with `unsupported_media_type`. Convert them before sending.
+        - **Wrong WAV format:** a WAV file at another sample rate, channel count or sample format, one that uses the extensible WAV header, or one that is truncated or malformed is rejected with `audio_decode_failed`.
+        - **Anything else** is read as headerless samples rather than rejected, so check the format before sending. An empty file, or one with an odd number of bytes, is rejected with `audio_decode_failed`.
 
         Parameters
         ----------
@@ -103,23 +108,21 @@ class AudioClient:
 
         ## Sending audio
 
-        Send audio as binary messages of signed 16-bit little-endian PCM, mono, 16 kHz, with no header. Each message is one audio frame. Frames of around 100 ms work well. You can cut the audio at any sample boundary; the server joins the frames into one continuous stream. A frame is rejected with `invalid_audio_frame` if it is empty, has an odd number of bytes (a partial sample), or holds more than 10 seconds of audio. A message too large for the server to read, whether a frame or a text message, ends the session with close code 1011. Accepted frames are not acknowledged; a rejected frame is answered with an `error`, and the session continues.
+        Send audio as binary messages of signed 16-bit little-endian PCM, mono, 16 kHz, with no header. Frames of around 100 ms work well. You can cut the audio at any sample boundary; the server joins the frames into one continuous stream.
 
-        To change the configuration, send `session.update` before your first audio frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first audio frame the server accepts; a rejected frame does not lock it. A `session.update` after that ends the session with `config_invalid`.
-
-        You can send audio faster than real time, for example from a recording. The server accepts the first 30 seconds of audio immediately, then 2 seconds of audio per second, which is twice real time. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and none of its audio is measured. Wait briefly and send the same frame again, so that the stream stays continuous.
-
-        If measurement fails, you receive an `internal_error` and the session ends. Open a new connection.
+        - **Configuration:** send `session.update` before your first audio frame. A `session.update` after your first audio frame ends the session with `config_invalid`.
+        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. Accepted frames are not acknowledged.
+        - **Send rate:** you can send faster than real time. The server accepts the first 30 seconds of audio immediately, then 2 seconds of audio per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous.
+        - **Failures:** if measurement fails, you receive `internal_error` and the session ends. Open a new connection.
 
         ## How measurements are produced
 
-        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, bracketed by `utterance.start` and `utterance.end`. A session that ends with an error can leave its last utterance without an `utterance.end`. Every `measurement.result` carries the `utterance_id` it belongs to, the span of audio it covers as `audio_start_ms` and `audio_end_ms`, and a `trigger` saying why it was produced. Both times count from the start of the audio the server has accepted.
+        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, bracketed by `utterance.start` and `utterance.end`.
 
-        While an utterance is in progress, the server produces a measurement every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`. Each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter than that. Consecutive interval measurements therefore overlap; at the maximum `measurement_timer_ms` of 10000 they meet end to end instead. An interval measurement that falls as speech stops can end shortly after the utterance does, and no final measurement follows it.
-
-        When an utterance ends, the server produces a final measurement with `trigger` set to `speech_ended`, unless less than one second of speech has passed since the previous measurement ended. It covers the last 10 seconds of the utterance, or the whole utterance if it is shorter, so it overlaps the interval measurement before it. Every utterance produces at least one measurement, because the final measurement is skipped only when an interval measurement ended less than one second before it.
-
-        Sending `session.close` while speech is in progress ends the utterance: you receive its final measurement, subject to the same one-second rule, then `utterance.end`, then `session.closed`.
+        - **During speech:** a `measurement.result` arrives every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`.
+        - **When speech ends:** a final measurement arrives with `trigger` set to `speech_ended`, unless the previous measurement ended less than one second earlier. Every utterance gets at least one measurement.
+        - **Span:** each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter, so consecutive measurements can overlap. `audio_start_ms` and `audio_end_ms` give the span, counted from the start of the audio the server has accepted.
+        - **Ending the session:** `session.close` during speech ends the utterance. You receive its final measurement, if one is due, then `utterance.end`, then `session.closed`. A session that ends with an error can leave its last utterance without an `utterance.end`.
 
         ## Limits
 
@@ -130,7 +133,7 @@ class AudioClient:
 
         ## Message flow
 
-        The table shows a session at the default `measurement_timer_ms` of 3000, with one utterance in which speech begins 98 ms into the audio and is still in progress at 26000 ms, when `session.close` ends it.
+        A session at the default `measurement_timer_ms` of 3000, with one utterance: speech begins 98 ms into the audio and is still in progress at 26000 ms, when `session.close` ends it.
 
         | Time in audio | Direction | Message |
         |---|---|---|
@@ -220,11 +223,11 @@ class AsyncAudioClient:
 
         ## How measurements are produced
 
-        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, listed in `utterances` with its span in the audio. Every measurement in `measurements` carries the `utterance_id` it belongs to, the span of audio it covers as `audio_start_ms` and `audio_end_ms`, and a `trigger` saying why it was produced. All times count from the start of the audio.
+        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, listed in `utterances` with its span in the audio.
 
-        While an utterance is in progress, the server produces a measurement every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`. Each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter than that. Consecutive interval measurements therefore overlap; at the maximum `measurement_timer_ms` of 10000 they meet end to end instead. An interval measurement that falls as speech stops can end shortly after the utterance does, and no final measurement follows it.
-
-        When an utterance ends, the server produces a final measurement with `trigger` set to `speech_ended`, unless less than one second of speech has passed since the previous measurement ended. Every utterance produces at least one measurement, because the final measurement is skipped only when an interval measurement ended less than one second before it. Audio that ends while speech is in progress ends the utterance.
+        - **During speech:** a measurement is taken every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`.
+        - **When speech ends:** a final measurement is taken with `trigger` set to `speech_ended`, unless the previous measurement ended less than one second earlier. Every utterance gets at least one measurement, and audio that ends during speech ends the utterance.
+        - **Span:** each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter, so consecutive measurements can overlap. `audio_start_ms` and `audio_end_ms` give the span, counted from the start of the audio.
 
         ## Limits
 
@@ -233,7 +236,12 @@ class AsyncAudioClient:
         | Request size | 25MB, the whole multipart body |
         | Audio format | 16-bit PCM, 16 kHz, mono, as a WAV file or headerless samples |
 
-        A request over the size limit is rejected with `audio_too_long`. Audio in MP3, FLAC, Ogg, MP4 or a RIFF container other than WAV is rejected with `unsupported_media_type`; convert it before sending. Any other file with an even number of bytes is treated as headerless samples, so send only the formats listed here; an empty file, or one with an odd number of bytes, is rejected with `audio_decode_failed`. A WAV file that is truncated or malformed, is at another sample rate, channel count or sample format, or uses the extensible WAV header rather than plain PCM is rejected with `audio_decode_failed` rather than converted.
+        The server does not convert audio, so send it in the format above.
+
+        - **Too large:** a request over the size limit is rejected with `audio_too_long`.
+        - **Unsupported formats:** MP3, FLAC, Ogg, MP4 or M4A, and RIFF files other than WAV, are rejected with `unsupported_media_type`. Convert them before sending.
+        - **Wrong WAV format:** a WAV file at another sample rate, channel count or sample format, one that uses the extensible WAV header, or one that is truncated or malformed is rejected with `audio_decode_failed`.
+        - **Anything else** is read as headerless samples rather than rejected, so check the format before sending. An empty file, or one with an odd number of bytes, is rejected with `audio_decode_failed`.
 
         Parameters
         ----------
@@ -279,23 +287,21 @@ class AsyncAudioClient:
 
         ## Sending audio
 
-        Send audio as binary messages of signed 16-bit little-endian PCM, mono, 16 kHz, with no header. Each message is one audio frame. Frames of around 100 ms work well. You can cut the audio at any sample boundary; the server joins the frames into one continuous stream. A frame is rejected with `invalid_audio_frame` if it is empty, has an odd number of bytes (a partial sample), or holds more than 10 seconds of audio. A message too large for the server to read, whether a frame or a text message, ends the session with close code 1011. Accepted frames are not acknowledged; a rejected frame is answered with an `error`, and the session continues.
+        Send audio as binary messages of signed 16-bit little-endian PCM, mono, 16 kHz, with no header. Frames of around 100 ms work well. You can cut the audio at any sample boundary; the server joins the frames into one continuous stream.
 
-        To change the configuration, send `session.update` before your first audio frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first audio frame the server accepts; a rejected frame does not lock it. A `session.update` after that ends the session with `config_invalid`.
-
-        You can send audio faster than real time, for example from a recording. The server accepts the first 30 seconds of audio immediately, then 2 seconds of audio per second, which is twice real time. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited`, and none of its audio is measured. Wait briefly and send the same frame again, so that the stream stays continuous.
-
-        If measurement fails, you receive an `internal_error` and the session ends. Open a new connection.
+        - **Configuration:** send `session.update` before your first audio frame. A `session.update` after your first audio frame ends the session with `config_invalid`.
+        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. Accepted frames are not acknowledged.
+        - **Send rate:** you can send faster than real time. The server accepts the first 30 seconds of audio immediately, then 2 seconds of audio per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous.
+        - **Failures:** if measurement fails, you receive `internal_error` and the session ends. Open a new connection.
 
         ## How measurements are produced
 
-        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, bracketed by `utterance.start` and `utterance.end`. A session that ends with an error can leave its last utterance without an `utterance.end`. Every `measurement.result` carries the `utterance_id` it belongs to, the span of audio it covers as `audio_start_ms` and `audio_end_ms`, and a `trigger` saying why it was produced. Both times count from the start of the audio the server has accepted.
+        The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, bracketed by `utterance.start` and `utterance.end`.
 
-        While an utterance is in progress, the server produces a measurement every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`. Each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter than that. Consecutive interval measurements therefore overlap; at the maximum `measurement_timer_ms` of 10000 they meet end to end instead. An interval measurement that falls as speech stops can end shortly after the utterance does, and no final measurement follows it.
-
-        When an utterance ends, the server produces a final measurement with `trigger` set to `speech_ended`, unless less than one second of speech has passed since the previous measurement ended. It covers the last 10 seconds of the utterance, or the whole utterance if it is shorter, so it overlaps the interval measurement before it. Every utterance produces at least one measurement, because the final measurement is skipped only when an interval measurement ended less than one second before it.
-
-        Sending `session.close` while speech is in progress ends the utterance: you receive its final measurement, subject to the same one-second rule, then `utterance.end`, then `session.closed`.
+        - **During speech:** a `measurement.result` arrives every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`.
+        - **When speech ends:** a final measurement arrives with `trigger` set to `speech_ended`, unless the previous measurement ended less than one second earlier. Every utterance gets at least one measurement.
+        - **Span:** each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter, so consecutive measurements can overlap. `audio_start_ms` and `audio_end_ms` give the span, counted from the start of the audio the server has accepted.
+        - **Ending the session:** `session.close` during speech ends the utterance. You receive its final measurement, if one is due, then `utterance.end`, then `session.closed`. A session that ends with an error can leave its last utterance without an `utterance.end`.
 
         ## Limits
 
@@ -306,7 +312,7 @@ class AsyncAudioClient:
 
         ## Message flow
 
-        The table shows a session at the default `measurement_timer_ms` of 3000, with one utterance in which speech begins 98 ms into the audio and is still in progress at 26000 ms, when `session.close` ends it.
+        A session at the default `measurement_timer_ms` of 3000, with one utterance: speech begins 98 ms into the audio and is still in progress at 26000 ms, when `session.close` ends it.
 
         | Time in audio | Direction | Message |
         |---|---|---|
