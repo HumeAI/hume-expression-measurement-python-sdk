@@ -156,7 +156,7 @@ with client.video.connect() as socket:
             break
 ```
 
-`bbox` is `[x0, y0, x1, y1]` in pixels of the submitted image. `face_id` links the same face across frames within a session. The [video realtime guide](https://dev.hume.ai/expression-measurement/docs/video/realtime) covers frame limits, the send rate, and face tracking.
+`bbox` is `[x0, y0, x1, y1]` in pixels of the submitted image. `face_id` links the same face across frames within a session. The [video realtime guide](https://dev.hume.ai/expression-measurement/docs/video/realtime) covers frame limits, the send rate, and face tracking. To stream a video file or a live source within the send rate, use the [video helpers](#video-helpers).
 
 ### Handling messages
 
@@ -302,6 +302,97 @@ for block in blocks:
         socket.send_audio_frame(pcm)
 if pcm := resampler.flush():
     socket.send_audio_frame(pcm)
+```
+
+## Video helpers
+
+`hume_expression_measurement.video_helpers` streams JPEG frames to the realtime video endpoint with the async client. `stream_video` sends frames within the send rate, handles rejected frames, and pairs every reply with the frame it answers. `iter_video_frames` reads frames from a video file through ffmpeg, and `JpegSplitter` splits a stream of concatenated JPEG images, such as MJPEG, into single frames. The helpers need no extra.
+
+### Streaming frames
+
+`stream_video` takes a socket and any async iterable of `VideoFrame`s, each a JPEG image as `data` with its time in milliseconds as `timestamp_ms`, and yields one reply per frame, in the order of the frames. A reply holds the frame's `timestamp_ms` and either the `result` that measured it or the `error` that rejected it, with the other set to None. This example measures a video file:
+
+```python
+import asyncio
+
+from hume_expression_measurement import AsyncExpressionMeasurementClient
+from hume_expression_measurement.video_helpers import iter_video_frames, stream_video
+
+
+async def main() -> None:
+    client = AsyncExpressionMeasurementClient()
+
+    async with client.video.connect() as socket:
+        stream = stream_video(socket, iter_video_frames("interview.mp4", fps=2))
+        async for reply in stream:
+            if reply.result is not None:
+                for face in reply.result.faces:
+                    top = ", ".join(f"{score.name} {score.probability:.2f}" for score in face.expressions[:3])
+                    print(f"{reply.timestamp_ms:.0f} ms, face {face.face_id}: {top}")
+            else:
+                print(f"{reply.timestamp_ms:.0f} ms: {reply.error.code}")
+        if stream.closed is not None:
+            print(f"{stream.closed.produced.measurements} faces measured")
+
+
+asyncio.run(main())
+```
+
+The server accepts the first 8 frames immediately and then 4 per second. `stream_video` sends the first 7 at once, keeping one in reserve for uneven network timing, and paces the rest. When the server rejects a frame with `rate_limited`, `stream_video` halves its send rate, down to one frame every 2 seconds, and raises it again gradually while frames are accepted, so a tighter limit than expected costs only a few rejected frames. What happens to the rejected frame depends on the source:
+
+1. From a recording, the default, it sends the frame again once the lower rate allows, so every frame is measured. It also sends a frame once more after a retryable `internal_error`.
+2. From a live source, with `live=True`, it yields the rejection and moves on, so results keep up with the source. A live frame that arrives when the send rate has no room is not sent at all, and `stream.dropped_frames` counts it.
+
+A frame over the 2 MB message limit would end the session, so it is never sent and is yielded as a `message_too_large` error. Frames that are not valid JPEGs or that exceed 8,294,400 pixels are rejected by the server with `invalid_image_frame`, and the session continues.
+
+When the frames run out, `stream_video` closes the session and yields the remaining replies, and the server closes the connection. `stream.closed` then holds the `session.closed` message with the session's totals. If the session ends before the frames do, because of a session-ending error, an idle timeout, or a dropped connection, the loop raises a `SessionEndedError`. Its `closed` holds the `session.closed` message when one arrived, and its `code` names the error that ended the session, if there was one. A session cannot be resumed, so each stream needs its own socket from `client.video.connect()`, and calling `stream_video` again with a socket it has already used raises a `RuntimeError`.
+
+Leaving the loop early, or an error from the frames, makes `stream_video` ask the server to close the session and stop the frames. After a `break`, this happens once the stream's iterator is garbage collected. To make it happen as soon as the block exits, wrap the iterator in `contextlib.aclosing`:
+
+```python
+async with contextlib.aclosing(aiter(stream_video(socket, frames))) as replies:
+    async for reply in replies:
+        ...
+```
+
+`stream_video` reads every message from the socket while it runs, so read messages from the replies instead. The configuration locks at the first frame, so send any `session.update` before streaming. Frames are sent only while the loop asks for the next reply, so keep the loop body short.
+
+### Video files
+
+`iter_video_frames` runs [ffmpeg](https://ffmpeg.org), which must be installed: `brew install ffmpeg` on macOS, `sudo apt install ffmpeg` on Debian or Ubuntu, or `winget install Gyan.FFmpeg` on Windows. It reads any format ffmpeg can decode and yields frames whose `timestamp_ms` is their position in the video. If ffmpeg is not on `PATH` or at `ffmpeg_path`, iteration raises an `FfmpegNotFoundError`, a `FileNotFoundError` whose message says how to install ffmpeg. If ffmpeg fails, iteration raises a `RuntimeError` that includes ffmpeg's output. ffmpeg starts when the first frame is requested, so with `stream_video` these errors are raised from the loop after the session has started, and `stream_video` has asked the server to close the session before they reach you.
+
+| Option | Default | Purpose |
+|---|---|---|
+| `fps` | 3 | Frames taken per second of video, above 0 and at most 4. |
+| `max_width` | 1280 | Wider frames are scaled down to this width, keeping their shape. Narrower frames are left as they are. |
+| `realtime` | False | Produce frames no faster than the video plays, as a live source would. By default they are produced as fast as they are sent. |
+| `ffmpeg_path` | `ffmpeg` on `PATH` | The ffmpeg executable to run. |
+
+`stream_video` stops ffmpeg when the stream ends. If you iterate `iter_video_frames` yourself, leaving the loop early stops ffmpeg once the generator is garbage collected, or as soon as the block exits if you wrap the generator in `contextlib.aclosing`.
+
+### Live sources
+
+`stream_video` measures frames from any source you can turn into an async iterable, such as a camera your application already captures. Encode each frame as a JPEG, give it a `timestamp_ms`, and pass `live=True`. A camera usually produces more frames than the 4 per second the endpoint accepts; `stream_video` sends what the send rate allows and counts the rest in `stream.dropped_frames`, so capturing fewer frames saves encoding work. Keep frames around 1280 pixels wide.
+
+`JpegSplitter` turns a byte stream of concatenated JPEG images, such as ffmpeg's `image2pipe` output or the body of an MJPEG stream, into single images. Pass each chunk to `push`, which returns the images completed so far and holds back a partial one. This generator yields frames from such a stream, timed from when it starts:
+
+```python
+import time
+import typing
+
+from hume_expression_measurement.video_helpers import JpegSplitter, VideoFrame, stream_video
+
+
+async def frames_from(mjpeg: typing.AsyncIterable[bytes]) -> typing.AsyncIterator[VideoFrame]:
+    splitter = JpegSplitter()
+    start = time.monotonic()
+    async for chunk in mjpeg:
+        for data in splitter.push(chunk):
+            yield VideoFrame(data=data, timestamp_ms=(time.monotonic() - start) * 1000)
+
+
+async for reply in stream_video(socket, frames_from(mjpeg), live=True):
+    print(reply.timestamp_ms, reply.error.code if reply.error is not None else len(reply.result.faces))
 ```
 
 ## Scores
