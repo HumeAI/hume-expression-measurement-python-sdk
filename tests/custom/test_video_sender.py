@@ -470,11 +470,15 @@ async def test_live_frames_that_arrive_with_no_send_allowance_left_are_dropped()
 
 async def test_the_first_7_recorded_frames_are_sent_at_once_and_the_rest_at_4_per_second() -> None:
     async with _connect(lambda frame_id, attempt: [_RESULT]) as (socket, server):
+        started = time.monotonic()
         replies = await _collect(stream_video(socket, _frames_of(*(_frame(frame_id) for frame_id in range(9)))))
 
         assert len(replies) == 9
         assert server.arrivals[6] - server.arrivals[0] < 0.1
-        assert server.arrivals[8] - server.arrivals[0] >= 0.45
+        # The 2 frames after the burst need 0.5 seconds of allowance. That time is measured from
+        # before iteration, when the allowance starts, because a busy machine can delay the first
+        # frame's arrival.
+        assert server.arrivals[8] - started >= 0.49
 
 
 async def test_frames_keep_being_paced_when_the_system_clock_is_set_back(monkeypatch: pytest.MonkeyPatch) -> None:
