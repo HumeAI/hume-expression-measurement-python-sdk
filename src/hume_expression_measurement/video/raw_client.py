@@ -53,13 +53,16 @@ class RawVideoClient:
         request_options: typing.Optional[RequestOptions] = None,
     ) -> HttpResponse[VideoFileResponse]:
         """
-        Send one or more images, each as a `file` part, and, to change the defaults, settings as a JSON `config` part. The response holds one result per image, in the order the parts were sent, with the measurements for every face found in it. An image with no faces is a normal result with an empty `faces` array.
+        Send one or more images, each as a `file` part, and, to change the defaults, settings as a JSON `config` part. The response holds one result per image, in the order the parts were sent. An image with no faces is a normal result with an empty `faces` array.
 
         ## Detection and measurement
 
-        The server detects the faces in each image. It does not measure a face whose detection confidence is below `face.threshold`, or whose bounding box is under `face.min_size` pixels on its shorter side. Of the rest, it measures up to 64, most confident first, and lists them in `faces` in that order. Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+        The server detects the faces in each image and measures up to 64 of them, most confident first, listed in `faces` in that order.
 
-        `face_id` tracks a face across the images of one request. A face normally keeps the same ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs do not identify a person. To keep IDs consistent across requests, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request; otherwise IDs start again from 0 in every request.
+        - A face is skipped, and does not count toward the 64, if its detection confidence is below `face.threshold` or its bounding box is under `face.min_size` pixels on its shorter side.
+        - Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+        - `face_id` tracks a face across the images of one request. A face normally keeps its ID while it stays in view, and may get a new one if it leaves and returns. IDs do not identify a person.
+        - **Across requests:** IDs start again from 0 in every request. To keep them consistent, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request.
 
         ## Limits
 
@@ -70,7 +73,11 @@ class RawVideoClient:
         | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
-        Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded can still fail the request with `image_decode_failed` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
+        Every image is checked before any is measured. One bad image fails the whole request, which then returns no results:
+
+        - **Not a JPEG:** rejected with `unsupported_media_type`.
+        - **Over the image size or pixel limit:** rejected with `image_too_large`.
+        - **Cannot be decoded:** rejected with `image_decode_failed`, possibly after earlier images were measured.
 
         Parameters
         ----------
@@ -207,25 +214,31 @@ class RawVideoClient:
 
         ## Sending frames
 
-        Send each frame as one binary message containing a complete JPEG image. Every frame receives a reply: a `measurement.result`, or an `error` if the frame was rejected or its measurement failed. A frame that is empty, is not a JPEG, or has more pixels than the limit is rejected with `invalid_image_frame`. Any message larger than the message size limit, whether a frame or a text message, ends the session with `message_too_large`.
+        Send each frame as one binary message containing a complete JPEG. Every frame gets exactly one reply: a `measurement.result`, or an `error`.
 
-        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame that passes the send-rate check, even if that frame is then rejected with `invalid_image_frame` because it is not a JPEG. An empty frame, or one rejected with `rate_limited`, does not lock it. A `session.update` after that ends the session with `config_invalid`.
-
-        The server accepts the first 8 frames immediately, then 4 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again. A frame within the limit is never rejected because the server is busy: it waits until the server can measure it, so under heavy load replies take longer instead.
-
-        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`. Only frames sent for measurement count: a frame that is rejected, or has no faces to measure, neither adds to the count nor resets it.
+        - **Configuration:** send `session.update` before your first frame. A `session.update` after your first frame ends the session with `config_invalid`.
+        - **Rejected frames:** a frame that is empty, is not a JPEG, or is over the pixel limit gets `invalid_image_frame`. A frame over 2MB ends the session with `message_too_large`.
+        - **Send rate:** the server accepts the first 8 frames immediately, then 4 per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and resend it.
+        - **Under load:** replies slow down; a frame within the send rate is never rejected because the server is busy.
+        - **Failures:** a frame whose measurement fails gets `internal_error`; resend it if you need its result. Five failures in a row end the session.
 
         ## Matching results to frames
 
-        Replies arrive in the order you sent the frames, one reply per frame, so pair them by position. Keep a queue of the frames you have sent. Remove the oldest for each `measurement.result`, and for each `error` whose code is `invalid_image_frame`, `rate_limited` or `internal_error`. Other errors, such as `message_invalid`, reply to a text message and do not consume a frame, and an error that ends the session needs no pairing. Frames sent before `session.close` receive their replies before `session.closed`.
+        Replies arrive in the order you sent the frames, so pair them by position.
 
-        `frame_id` counts results, not the frames you sent: it starts at 0 and does not advance for a frame that received an `error`, so do not use it as an index into your own frames.
+        - Keep a queue of the frames you have sent. Remove the oldest for each `measurement.result`, and for each `error` with code `invalid_image_frame`, `rate_limited` or `internal_error`.
+        - Other errors do not consume a frame: they answer a JSON message you sent, or end the session.
+        - Frames sent before `session.close` receive their replies before `session.closed`.
+        - `frame_id` counts results, not frames. It does not advance for a frame that received an `error`, so do not use it as an index into your own frames.
 
         ## Detection and measurement
 
-        The server detects the faces in each frame. It does not measure a face whose detection confidence is below `face.threshold`, or whose bounding box is under `face.min_size` pixels on its shorter side. Of the rest, it measures up to 64, most confident first, and lists them in `faces` in that order. Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop. A frame with no faces is a normal result: a `measurement.result` with an empty `faces` array.
+        The server detects the faces in each frame and measures up to 64 of them, most confident first, listed in `faces` in that order.
 
-        `face_id` tracks a face across frames within the session. A face normally keeps the same ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs restart in every session and do not identify a person.
+        - A face is skipped, and does not count toward the 64, if its detection confidence is below `face.threshold` or its bounding box is under `face.min_size` pixels on its shorter side.
+        - Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+        - A frame with no faces is a normal result: a `measurement.result` with an empty `faces` array.
+        - `face_id` tracks a face across frames in the session. A face normally keeps its ID while it stays in view, and may get a new one if it leaves and returns. IDs restart in every session and do not identify a person.
 
         ## Limits
 
@@ -239,7 +252,7 @@ class RawVideoClient:
 
         ## Message flow
 
-        The table shows a session of four frames, the third of which is a PNG sent by mistake. Face 0 appears in the first two frames and face 1 in the second and fourth. The rejected frame receives no `frame_id`, so the last result is `frame_id` 2. In `session.closed`, `received.frames` is 3 because it counts only frames accepted for measurement, and `produced.measurements` is 4 because it counts faces rather than frames.
+        A session of four frames, the third a PNG sent by mistake. The rejected frame gets no `frame_id`, so the last result is `frame_id` 2. In `session.closed`, `received.frames` counts only the 3 frames accepted for measurement, and `produced.measurements` counts faces, so it is 4.
 
         | Direction | Message |
         |---|---|
@@ -315,13 +328,16 @@ class AsyncRawVideoClient:
         request_options: typing.Optional[RequestOptions] = None,
     ) -> AsyncHttpResponse[VideoFileResponse]:
         """
-        Send one or more images, each as a `file` part, and, to change the defaults, settings as a JSON `config` part. The response holds one result per image, in the order the parts were sent, with the measurements for every face found in it. An image with no faces is a normal result with an empty `faces` array.
+        Send one or more images, each as a `file` part, and, to change the defaults, settings as a JSON `config` part. The response holds one result per image, in the order the parts were sent. An image with no faces is a normal result with an empty `faces` array.
 
         ## Detection and measurement
 
-        The server detects the faces in each image. It does not measure a face whose detection confidence is below `face.threshold`, or whose bounding box is under `face.min_size` pixels on its shorter side. Of the rest, it measures up to 64, most confident first, and lists them in `faces` in that order. Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+        The server detects the faces in each image and measures up to 64 of them, most confident first, listed in `faces` in that order.
 
-        `face_id` tracks a face across the images of one request. A face normally keeps the same ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs do not identify a person. To keep IDs consistent across requests, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request; otherwise IDs start again from 0 in every request.
+        - A face is skipped, and does not count toward the 64, if its detection confidence is below `face.threshold` or its bounding box is under `face.min_size` pixels on its shorter side.
+        - Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+        - `face_id` tracks a face across the images of one request. A face normally keeps its ID while it stays in view, and may get a new one if it leaves and returns. IDs do not identify a person.
+        - **Across requests:** IDs start again from 0 in every request. To keep them consistent, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request.
 
         ## Limits
 
@@ -332,7 +348,11 @@ class AsyncRawVideoClient:
         | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
         | Faces measured per image | 64 |
 
-        Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded can still fail the request with `image_decode_failed` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
+        Every image is checked before any is measured. One bad image fails the whole request, which then returns no results:
+
+        - **Not a JPEG:** rejected with `unsupported_media_type`.
+        - **Over the image size or pixel limit:** rejected with `image_too_large`.
+        - **Cannot be decoded:** rejected with `image_decode_failed`, possibly after earlier images were measured.
 
         Parameters
         ----------
@@ -471,25 +491,31 @@ class AsyncRawVideoClient:
 
         ## Sending frames
 
-        Send each frame as one binary message containing a complete JPEG image. Every frame receives a reply: a `measurement.result`, or an `error` if the frame was rejected or its measurement failed. A frame that is empty, is not a JPEG, or has more pixels than the limit is rejected with `invalid_image_frame`. Any message larger than the message size limit, whether a frame or a text message, ends the session with `message_too_large`.
+        Send each frame as one binary message containing a complete JPEG. Every frame gets exactly one reply: a `measurement.result`, or an `error`.
 
-        To change the configuration, send `session.update` before your first frame; the server answers with `session.updated` carrying the configuration in force. The configuration locks at the first frame that passes the send-rate check, even if that frame is then rejected with `invalid_image_frame` because it is not a JPEG. An empty frame, or one rejected with `rate_limited`, does not lock it. A `session.update` after that ends the session with `config_invalid`.
-
-        The server accepts the first 8 frames immediately, then 4 frames per second. Unused allowance builds up while you pause, so you can catch up afterwards. A frame that would exceed this limit is rejected with `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and send the same frame again. A frame within the limit is never rejected because the server is busy: it waits until the server can measure it, so under heavy load replies take longer instead.
-
-        If measurement fails for a frame, you receive an `internal_error`, the frame is skipped, and the session continues; resend the frame if you need a result for it. Five consecutive failures end the session: the fifth `error` is followed by `session.closed` with `reason` set to `error`. Only frames sent for measurement count: a frame that is rejected, or has no faces to measure, neither adds to the count nor resets it.
+        - **Configuration:** send `session.update` before your first frame. A `session.update` after your first frame ends the session with `config_invalid`.
+        - **Rejected frames:** a frame that is empty, is not a JPEG, or is over the pixel limit gets `invalid_image_frame`. A frame over 2MB ends the session with `message_too_large`.
+        - **Send rate:** the server accepts the first 8 frames immediately, then 4 per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and resend it.
+        - **Under load:** replies slow down; a frame within the send rate is never rejected because the server is busy.
+        - **Failures:** a frame whose measurement fails gets `internal_error`; resend it if you need its result. Five failures in a row end the session.
 
         ## Matching results to frames
 
-        Replies arrive in the order you sent the frames, one reply per frame, so pair them by position. Keep a queue of the frames you have sent. Remove the oldest for each `measurement.result`, and for each `error` whose code is `invalid_image_frame`, `rate_limited` or `internal_error`. Other errors, such as `message_invalid`, reply to a text message and do not consume a frame, and an error that ends the session needs no pairing. Frames sent before `session.close` receive their replies before `session.closed`.
+        Replies arrive in the order you sent the frames, so pair them by position.
 
-        `frame_id` counts results, not the frames you sent: it starts at 0 and does not advance for a frame that received an `error`, so do not use it as an index into your own frames.
+        - Keep a queue of the frames you have sent. Remove the oldest for each `measurement.result`, and for each `error` with code `invalid_image_frame`, `rate_limited` or `internal_error`.
+        - Other errors do not consume a frame: they answer a JSON message you sent, or end the session.
+        - Frames sent before `session.close` receive their replies before `session.closed`.
+        - `frame_id` counts results, not frames. It does not advance for a frame that received an `error`, so do not use it as an index into your own frames.
 
         ## Detection and measurement
 
-        The server detects the faces in each frame. It does not measure a face whose detection confidence is below `face.threshold`, or whose bounding box is under `face.min_size` pixels on its shorter side. Of the rest, it measures up to 64, most confident first, and lists them in `faces` in that order. Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop. A frame with no faces is a normal result: a `measurement.result` with an empty `faces` array.
+        The server detects the faces in each frame and measures up to 64 of them, most confident first, listed in `faces` in that order.
 
-        `face_id` tracks a face across frames within the session. A face normally keeps the same ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs restart in every session and do not identify a person.
+        - A face is skipped, and does not count toward the 64, if its detection confidence is below `face.threshold` or its bounding box is under `face.min_size` pixels on its shorter side.
+        - Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+        - A frame with no faces is a normal result: a `measurement.result` with an empty `faces` array.
+        - `face_id` tracks a face across frames in the session. A face normally keeps its ID while it stays in view, and may get a new one if it leaves and returns. IDs restart in every session and do not identify a person.
 
         ## Limits
 
@@ -503,7 +529,7 @@ class AsyncRawVideoClient:
 
         ## Message flow
 
-        The table shows a session of four frames, the third of which is a PNG sent by mistake. Face 0 appears in the first two frames and face 1 in the second and fourth. The rejected frame receives no `frame_id`, so the last result is `frame_id` 2. In `session.closed`, `received.frames` is 3 because it counts only frames accepted for measurement, and `produced.measurements` is 4 because it counts faces rather than frames.
+        A session of four frames, the third a PNG sent by mistake. The rejected frame gets no `frame_id`, so the last result is `frame_id` 2. In `session.closed`, `received.frames` counts only the 3 frames accepted for measurement, and `produced.measurements` counts faces, so it is 4.
 
         | Direction | Message |
         |---|---|

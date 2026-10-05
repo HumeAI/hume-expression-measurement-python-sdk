@@ -16,11 +16,11 @@ Send the audio as the `file` part and, to change the defaults, settings as a JSO
 
 ## How measurements are produced
 
-The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, listed in `utterances` with its span in the audio. Every measurement in `measurements` carries the `utterance_id` it belongs to, the span of audio it covers as `audio_start_ms` and `audio_end_ms`, and a `trigger` saying why it was produced. All times count from the start of the audio.
+The server detects when speech starts and stops. Each continuous stretch of speech is an **utterance**, listed in `utterances` with its span in the audio.
 
-While an utterance is in progress, the server produces a measurement every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`. Each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter than that. Consecutive interval measurements therefore overlap; at the maximum `measurement_timer_ms` of 10000 they meet end to end instead. An interval measurement that falls as speech stops can end shortly after the utterance does, and no final measurement follows it.
-
-When an utterance ends, the server produces a final measurement with `trigger` set to `speech_ended`, unless less than one second of speech has passed since the previous measurement ended. Every utterance produces at least one measurement, because the final measurement is skipped only when an interval measurement ended less than one second before it. Audio that ends while speech is in progress ends the utterance.
+- **During speech:** a measurement is taken every `measurement_timer_ms` milliseconds of speech, with `trigger` set to `interval`.
+- **When speech ends:** a final measurement is taken with `trigger` set to `speech_ended`, unless the previous measurement ended less than one second earlier. Every utterance gets at least one measurement, and audio that ends during speech ends the utterance.
+- **Span:** each measurement covers the most recent 10 seconds of the utterance, or the whole utterance if it is shorter, so consecutive measurements can overlap. `audio_start_ms` and `audio_end_ms` give the span, counted from the start of the audio.
 
 ## Limits
 
@@ -29,7 +29,12 @@ When an utterance ends, the server produces a final measurement with `trigger` s
 | Request size | 25MB, the whole multipart body |
 | Audio format | 16-bit PCM, 16 kHz, mono, as a WAV file or headerless samples |
 
-A request over the size limit is rejected with `audio_too_long`. Audio in MP3, FLAC, Ogg, MP4 or a RIFF container other than WAV is rejected with `unsupported_media_type`; convert it before sending. Any other file with an even number of bytes is treated as headerless samples, so send only the formats listed here; an empty file, or one with an odd number of bytes, is rejected with `audio_decode_failed`. A WAV file that is truncated or malformed, is at another sample rate, channel count or sample format, or uses the extensible WAV header rather than plain PCM is rejected with `audio_decode_failed` rather than converted.
+The server does not convert audio, so send it in the format above.
+
+- **Too large:** a request over the size limit is rejected with `audio_too_long`.
+- **Unsupported formats:** MP3, FLAC, Ogg, MP4 or M4A, and RIFF files other than WAV, are rejected with `unsupported_media_type`. Convert them before sending.
+- **Wrong WAV format:** a WAV file at another sample rate, channel count or sample format, one that uses the extensible WAV header, or one that is truncated or malformed is rejected with `audio_decode_failed`.
+- **Anything else** is read as headerless samples rather than rejected, so check the format before sending. An empty file, or one with an odd number of bytes, is rejected with `audio_decode_failed`.
 </dd>
 </dl>
 </dd>
@@ -111,13 +116,16 @@ client.audio.measure(
 <dl>
 <dd>
 
-Send one or more images, each as a `file` part, and, to change the defaults, settings as a JSON `config` part. The response holds one result per image, in the order the parts were sent, with the measurements for every face found in it. An image with no faces is a normal result with an empty `faces` array.
+Send one or more images, each as a `file` part, and, to change the defaults, settings as a JSON `config` part. The response holds one result per image, in the order the parts were sent. An image with no faces is a normal result with an empty `faces` array.
 
 ## Detection and measurement
 
-The server detects the faces in each image. It does not measure a face whose detection confidence is below `face.threshold`, or whose bounding box is under `face.min_size` pixels on its shorter side. Of the rest, it measures up to 64, most confident first, and lists them in `faces` in that order. Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+The server detects the faces in each image and measures up to 64 of them, most confident first, listed in `faces` in that order.
 
-`face_id` tracks a face across the images of one request. A face normally keeps the same ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs do not identify a person. To keep IDs consistent across requests, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request; otherwise IDs start again from 0 in every request.
+- A face is skipped, and does not count toward the 64, if its detection confidence is below `face.threshold` or its bounding box is under `face.min_size` pixels on its shorter side.
+- Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
+- `face_id` tracks a face across the images of one request. A face normally keeps its ID while it stays in view, and may get a new one if it leaves and returns. IDs do not identify a person.
+- **Across requests:** IDs start again from 0 in every request. To keep them consistent, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request.
 
 ## Limits
 
@@ -128,7 +136,11 @@ The server detects the faces in each image. It does not measure a face whose det
 | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
 | Faces measured per image | 64 |
 
-Before any image is measured, every image is checked: one that is not a JPEG, or is over the image size or pixel limit, fails the request with `unsupported_media_type` or `image_too_large`. An image that cannot be decoded can still fail the request with `image_decode_failed` after earlier images were measured. A request that fails in any of these ways returns no result for any image and is recorded as an `errored` run.
+Every image is checked before any is measured. One bad image fails the whole request, which then returns no results:
+
+- **Not a JPEG:** rejected with `unsupported_media_type`.
+- **Over the image size or pixel limit:** rejected with `image_too_large`.
+- **Cannot be decoded:** rejected with `image_decode_failed`, possibly after earlier images were measured.
 </dd>
 </dl>
 </dd>
