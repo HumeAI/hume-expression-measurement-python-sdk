@@ -416,6 +416,37 @@ async def test_recv_reconnects_too(kind: _Kind) -> None:
         assert [first.session_id, second.session_id] == ["session-1", "session-2"]
 
 
+# A sync receive cannot be cancelled, so this covers the async client only.
+async def test_a_receive_that_times_out_leaves_the_reconnect_running_for_the_next_receive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Longer than each receive waits, so that receives time out while the reconnect waits.
+    monkeypatch.setattr(_policy, "_FIRST_DELAY_RANGE", (0.1, 0.1))
+    monkeypatch.setattr(_policy, "_MAX_DELAY", 0.1)
+    server = _FakeServer("audio")
+    async with _serving(server) as port, _connect_audio("async", port) as socket:
+        assert isinstance(await asyncio.wait_for(socket.recv(), _TIMEOUT), AudioSessionCreated)
+        release = server.hold_handshakes()
+        await server.sessions[0].close(1012)
+
+        async def receive_with_timeouts() -> object:
+            while True:
+                with contextlib.suppress(asyncio.TimeoutError):
+                    return await asyncio.wait_for(socket.recv(), 0.02)
+
+        receiving = asyncio.ensure_future(receive_with_timeouts())
+        await _until(lambda: receiving.done() or len(server.requests) == 2)
+        assert len(server.requests) == 2
+        # Receives also time out while the handshake is held.
+        await asyncio.sleep(0.1)
+        release.set()
+
+        message = await asyncio.wait_for(receiving, _TIMEOUT)
+        assert isinstance(message, AudioSessionCreated)
+        assert message.session_id == "session-2"
+        assert len(server.requests) == 2
+
+
 async def test_iteration_skips_messages_it_cannot_parse_as_the_socket_from_connect_does(kind: _Kind) -> None:
     server = _FakeServer("audio")
     async with _serving(server) as port, _connect_audio(kind, port) as socket:

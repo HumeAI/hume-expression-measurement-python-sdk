@@ -38,11 +38,14 @@ class _AsyncReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _Up
         # Set once no reconnect may follow: the session ended for good, the caller sent
         # session.close, or the context exited. Setting it wakes a reconnect that is waiting.
         self._ended = asyncio.Event()
+        # The reconnect under way, in a task of its own so that it outlives a cancelled receive.
+        self._reconnecting: typing.Optional[asyncio.Task[bool]] = None
 
     async def recv(self) -> _ResponseT:
         """
         Receive the next message. When the session has ended in a way that a new session can
         recover from, this reconnects first, and the message comes from the new session.
+        Cancelling it, as a timeout does, leaves a reconnect under way running for the next call.
         """
         return await self._receive(iterating=False)
 
@@ -72,12 +75,19 @@ class _AsyncReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _Up
                     continue
                 self._session.observe(message)
                 return message
+            reconnecting = self._reconnecting
+            if reconnecting is None:
+                reconnecting = self._reconnecting = asyncio.create_task(self._reconnect(closed))
             # Outside the except clause, so that an error from reconnecting keeps its own context.
+            # Shielded, so that cancelling this receive leaves the reconnect running for the next
+            # receive to wait on, rather than starting another attempt.
             try:
-                reconnected = await self._reconnect(closed)
+                reconnected = await asyncio.shield(reconnecting)
             except Exception:
+                self._reconnecting = None
                 self._ended.set()
                 raise
+            self._reconnecting = None
             if not reconnected:
                 self._ended.set()
                 raise closed
