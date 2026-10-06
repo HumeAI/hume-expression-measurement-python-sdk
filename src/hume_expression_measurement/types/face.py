@@ -11,12 +11,12 @@ from .video_expression_score import VideoExpressionScore
 
 class Face(UniversalBaseModel):
     """
-    A face detected in the image, with its expression measurements.
+    A face detected in the image, with its expression measurements if it was measured. Only the largest faces in an image are measured; the others carry their bounding box and detection confidence, with `face_id`, `expressions` and `descriptions` null.
     """
 
-    face_id: int = pydantic.Field()
+    face_id: typing.Optional[int] = pydantic.Field(default=None)
     """
-    Tracks this face across the images of a realtime session or a file request. IDs are assigned from 0 in the order faces first appear, and a face normally keeps its ID while it stays in view; a face that leaves the view and returns may receive a new ID. IDs restart in every session and every file request, unless a file request continues them with a `face_state`, and do not identify a person.
+    Tracks this face across the images of a realtime session or a file request. IDs are assigned from 0 in the order faces are first measured, largest first within an image. A face normally keeps its ID while it is measured, and can get it back after it leaves the view or is no longer among the largest faces. The server remembers up to 32 faces, so a face that returns after many others have been measured may receive a new ID. IDs restart in every session and every file request, unless a file request continues them with a `face_state`, and do not identify a person. Null for a face that was not measured.
     """
 
     bbox: BoundingBox
@@ -25,14 +25,14 @@ class Face(UniversalBaseModel):
     Confidence that the bounding box contains a face. Always at or above the configured `threshold`. Unrelated to the expression scores.
     """
 
-    expressions: typing.List[VideoExpressionScore] = pydantic.Field()
+    expressions: typing.Optional[typing.List[VideoExpressionScore]] = pydantic.Field(default=None)
     """
-    Expressions detected on the face, such as `amusement`, `interest` and `surprise (positive)`, in descending order of probability, then by name. Only scores above 0.1 are included, so the array may be empty. `probability` is the chance a human rater would name the expression for this face, independently for each expression.
+    Expressions detected on the face, such as `amusement`, `interest` and `surprise (positive)`, in descending order of probability, then by name. Only scores above 0.1 are included, so the array may be empty. `probability` is the chance a human rater would name the expression for this face, independently for each expression. Null for a face that was not measured.
     """
 
-    descriptions: typing.List[VideoDescriptionScore] = pydantic.Field()
+    descriptions: typing.Optional[typing.List[VideoDescriptionScore]] = pydantic.Field(default=None)
     """
-    Visible facial actions, such as `smile`, `jaw drop` and `wide-eyed`, in descending order of probability, then by name. Only scores above 0.1 are included, so the array may be empty.
+    Visible facial actions, such as `smile`, `jaw drop` and `wide-eyed`, in descending order of probability, then by name. Only scores above 0.1 are included, so the array may be empty. Null for a face that was not measured.
     """
 
     if IS_PYDANTIC_V2:
