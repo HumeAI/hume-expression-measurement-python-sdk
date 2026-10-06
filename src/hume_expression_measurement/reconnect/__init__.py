@@ -5,6 +5,18 @@ Realtime sockets that reconnect when the server restarts or the connection drops
 new session the last `session.update`.
 """
 
-from .sockets import AsyncReconnectingAudioSocket, AsyncReconnectingVideoSocket, reconnecting
+from .sockets import (
+    AsyncReconnectingAudioSocket,
+    AsyncReconnectingVideoSocket,
+    ReconnectingAudioSocket,
+    ReconnectingVideoSocket,
+    reconnecting,
+)
 
-__all__ = ["AsyncReconnectingAudioSocket", "AsyncReconnectingVideoSocket", "reconnecting"]
+__all__ = [
+    "AsyncReconnectingAudioSocket",
+    "AsyncReconnectingVideoSocket",
+    "ReconnectingAudioSocket",
+    "ReconnectingVideoSocket",
+    "reconnecting",
+]
