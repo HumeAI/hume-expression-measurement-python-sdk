@@ -104,7 +104,7 @@ class ExpressionMeasurementClient:
         self._runs: typing.Optional[RunsClient] = None
 
     @property
-    def audio(self):
+    def audio(self) -> AudioClient:
         if self._audio is None:
             from .audio.client import AudioClient  # noqa: E402
 
@@ -112,7 +112,7 @@ class ExpressionMeasurementClient:
         return self._audio
 
     @property
-    def video(self):
+    def video(self) -> VideoClient:
         if self._video is None:
             from .video.client import VideoClient  # noqa: E402
 
@@ -231,7 +231,7 @@ class AsyncExpressionMeasurementClient:
         self._runs: typing.Optional[AsyncRunsClient] = None
 
     @property
-    def audio(self):
+    def audio(self) -> AsyncAudioClient:
         if self._audio is None:
             from .audio.client import AsyncAudioClient  # noqa: E402
 
@@ -239,7 +239,7 @@ class AsyncExpressionMeasurementClient:
         return self._audio
 
     @property
-    def video(self):
+    def video(self) -> AsyncVideoClient:
         if self._video is None:
             from .video.client import AsyncVideoClient  # noqa: E402
 

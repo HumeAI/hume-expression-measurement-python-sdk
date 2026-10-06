@@ -13,6 +13,7 @@ import time
 import typing
 import weakref
 
+from ..reconnect import AsyncReconnectingVideoSocket
 from ..types.error import Error
 from ..types.error_code import ErrorCode
 from ..types.session_close import SessionClose
@@ -155,7 +156,7 @@ def stream_video(
     Raises
     ------
     TypeError
-        frames is not an async iterable.
+        frames is not an async iterable, or socket is from `reconnecting()`.
 
     RuntimeError
         The socket has already served a stream.
@@ -182,6 +183,13 @@ def stream_video(
     """
     if not isinstance(frames, collections.abc.AsyncIterable):
         raise TypeError("frames must be an async iterable of frames, such as from iter_video_frames.")
+    # Type checkers reject this socket, but code that is not type checked can still pass it. A
+    # reconnect would start a new session partway through the stream, whose replies would be
+    # paired with frames the previous session never answered.
+    if isinstance(socket, AsyncReconnectingVideoSocket):
+        raise TypeError(
+            "stream_video does not reconnect. Pass a socket from `client.video.connect()` rather than from `reconnecting()`."
+        )
     if socket in _streamed_sockets:
         raise RuntimeError(
             "This socket has already served a stream. Open a new one with `client.video.connect()` for each stream."
