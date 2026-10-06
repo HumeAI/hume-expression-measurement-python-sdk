@@ -78,11 +78,13 @@ with open("photo.jpg", "rb") as image:
 
 for result in response.measurements:
     for face in result.faces:
+        if face.expressions is None:
+            continue
         top = ", ".join(f"{score.name} {score.probability:.2f}" for score in face.expressions[:3])
         print(f"image {result.frame_id}, face {face.face_id} at {face.bbox}: {top}")
 ```
 
-`file` is a list, so one request can carry several JPEG images. `measurements` holds one result per image, in the order sent, and `frame_id` is the image's position in the list. The [video upload guide](https://dev.hume.ai/expression-measurement/docs/video/upload) covers image limits, detection settings, and tracking faces across requests.
+`file` is a list, so one request can carry several JPEG images. `measurements` holds one result per image, in the order sent, and `frame_id` is the image's position in the list. The server lists every face it detects but measures only the largest, 2 by default. A face it did not measure has `face_id`, `expressions`, and `descriptions` set to `None`, so the example skips it. The [video upload guide](https://dev.hume.ai/expression-measurement/docs/video/upload) covers image limits, detection settings, and tracking faces across requests.
 
 ## Quickstart: realtime
 
@@ -90,40 +92,55 @@ The realtime endpoints take media that is still arriving, such as audio from a l
 
 ### Audio
 
-Stream the audio in frames, close the session, and read the results.
+Stream the audio in frames at the rate it plays, print the results as they arrive, and close the session.
 
 ```python
+import asyncio
+
 from hume_expression_measurement import (
+    AsyncExpressionMeasurementClient,
     Error,
-    ExpressionMeasurementClient,
     SessionClose,
     AudioMeasurementResult,
     AudioSessionClosed,
 )
 
-client = ExpressionMeasurementClient()
-
 # 3200 bytes is 100 ms of audio at 16 kHz, 16-bit, mono.
 FRAME_SIZE = 3200
 
-with client.audio.connect() as socket:
-    with open("speech.pcm", "rb") as audio:
-        while frame := audio.read(FRAME_SIZE):
-            socket.send_audio_frame(frame)
-    socket.send_audio_session_close(SessionClose(type="session.close"))
 
-    for message in socket:
-        if isinstance(message, AudioMeasurementResult):
-            top = ", ".join(f"{score.name} {score.probability:.2f}" for score in message.expressions[:3])
-            print(f"utterance {message.utterance_id}, {message.audio_start_ms} to {message.audio_end_ms} ms: {top}")
-        elif isinstance(message, Error):
-            print(f"{message.code}: {message.message}")
-        elif isinstance(message, AudioSessionClosed):
-            print(f"closed after {message.produced.measurements} measurements")
-            break
+async def main() -> None:
+    client = AsyncExpressionMeasurementClient()
+
+    async with client.audio.connect() as socket:
+
+        async def print_measurements() -> None:
+            async for message in socket:
+                if isinstance(message, AudioMeasurementResult):
+                    top = ", ".join(f"{score.name} {score.probability:.2f}" for score in message.expressions[:3])
+                    print(f"utterance {message.utterance_id}, {message.audio_start_ms} to {message.audio_end_ms} ms: {top}")
+                elif isinstance(message, Error):
+                    print(f"{message.code}: {message.message}")
+                elif isinstance(message, AudioSessionClosed):
+                    print(f"closed after {message.produced.measurements} measurements")
+                    break
+
+        receiver = asyncio.create_task(print_measurements())
+        try:
+            with open("speech.pcm", "rb") as audio:
+                while frame := audio.read(FRAME_SIZE):
+                    await socket.send_audio_frame(frame)
+                    await asyncio.sleep(0.1)
+            await socket.send_audio_session_close(SessionClose(type="session.close"))
+            await receiver
+        finally:
+            receiver.cancel()
+
+
+asyncio.run(main())
 ```
 
-The server detects speech, groups it into utterances, and sends a `measurement.result` every 3 seconds of speech while an utterance continues. It accepts the first 30 seconds of audio immediately and then twice real time, so a long recording must be paced. The [audio realtime guide](https://dev.hume.ai/expression-measurement/docs/audio/realtime) covers the send rate, utterances, and the message flow.
+The server detects speech, groups it into utterances, and sends a `measurement.result` every 3 seconds of speech while an utterance continues. It takes audio in close to real time, no faster than 1 second of audio per second, so the example waits 100 ms after each 100 ms frame. To measure a recording faster than it plays, upload it instead. The [audio realtime guide](https://dev.hume.ai/expression-measurement/docs/audio/realtime) covers the send rate, utterances, and the message flow.
 
 ### Video
 
@@ -148,6 +165,8 @@ with client.video.connect() as socket:
     for message in socket:
         if isinstance(message, VideoMeasurementResult):
             for face in message.faces:
+                if face.expressions is None:
+                    continue
                 top = ", ".join(f"{score.name} {score.probability:.2f}" for score in face.expressions[:3])
                 print(f"face {face.face_id} at {face.bbox}: {top}")
         elif isinstance(message, Error):
@@ -173,17 +192,12 @@ Iterating a socket yields one message at a time, each parsed into the model for 
 
 ## Async client
 
-`AsyncExpressionMeasurementClient` has the same interface with `async` methods and iteration.
+`AsyncExpressionMeasurementClient` has the same interface with `async` methods and iteration. The [realtime audio quickstart](#quickstart-realtime) uses it to read results while sending audio.
 
 ```python
 import asyncio
 
-from hume_expression_measurement import (
-    AsyncExpressionMeasurementClient,
-    SessionClose,
-    AudioMeasurementResult,
-    AudioSessionClosed,
-)
+from hume_expression_measurement import AsyncExpressionMeasurementClient
 
 
 async def main() -> None:
@@ -192,18 +206,6 @@ async def main() -> None:
     with open("speech.pcm", "rb") as audio:
         response = await client.audio.measure(file=("speech.pcm", audio, "application/octet-stream"))
     print(f"{len(response.measurements)} measurements")
-
-    async with client.audio.connect() as socket:
-        with open("speech.pcm", "rb") as audio:
-            while frame := audio.read(3200):
-                await socket.send_audio_frame(frame)
-        await socket.send_audio_session_close(SessionClose(type="session.close"))
-
-        async for message in socket:
-            if isinstance(message, AudioMeasurementResult):
-                print(message.expressions[:3])
-            elif isinstance(message, AudioSessionClosed):
-                break
 
 
 asyncio.run(main())
@@ -281,17 +283,16 @@ The device records at its own sample rate, and the SDK converts its audio to 16 
 ```python
 from hume_expression_measurement.audio_helpers import iter_wav_frames
 
-with client.audio.connect() as socket:
-    for frame in iter_wav_frames("recording.wav"):
-        socket.send_audio_frame(frame)
-    socket.send_audio_session_close(SessionClose(type="session.close"))
+for frame in iter_wav_frames("recording.wav"):
+    await socket.send_audio_frame(frame)
+    await asyncio.sleep(0.1)
 ```
 
-Frames are produced as fast as the file is read, so pace the sends for a file longer than 30 seconds. Compressed WAV files raise a `ValueError` with an ffmpeg command that converts them.
+Frames are produced as fast as the file is read, so the loop waits 100 ms after each one to stream the audio in close to real time. Compressed WAV files raise a `ValueError` with an ffmpeg command that converts them.
 
 ### Other sources
 
-`Resampler` converts a stream you already have, as bytes or NumPy arrays, block by block. Pass each block to `process`, then call `flush` after the last one. `process` can return an empty result while the filter fills, and the endpoint rejects empty frames, so check before sending. The endpoint also rejects frames longer than 10 seconds, so pass a long recording in blocks of about 100 ms rather than in one call, and pace the sends for a recording longer than 30 seconds.
+`Resampler` converts a stream you already have, as bytes or NumPy arrays, block by block. Pass each block to `process`, then call `flush` after the last one. `process` can return an empty result while the filter fills, and the endpoint rejects empty frames, so check before sending. The endpoint also rejects frames longer than 10 seconds, so pass a long recording in blocks of about 100 ms rather than in one call, and stream the audio in close to real time, no faster than 1 second of audio per second.
 
 ```python
 from hume_expression_measurement.audio_helpers import Resampler
@@ -310,7 +311,7 @@ if pcm := resampler.flush():
 
 ### Streaming frames
 
-`stream_video` takes a socket and any async iterable of `VideoFrame`s, each a JPEG image as `data` with its time in milliseconds as `timestamp_ms`, and yields one reply per frame, in the order of the frames. A reply holds the frame's `timestamp_ms` and either the `result` that measured it or the `error` that rejected it, with the other set to None. This example measures a video file:
+`stream_video` takes a socket and any async iterable of `VideoFrame`s, each a JPEG image as `data` with its time in milliseconds as `timestamp_ms`, and yields one reply per frame, in the order of the frames. A reply holds the frame's `timestamp_ms` and either the `result` that measured it or the `error` that rejected it, with the other set to None. This example measures a video file as it plays:
 
 ```python
 import asyncio
@@ -323,10 +324,12 @@ async def main() -> None:
     client = AsyncExpressionMeasurementClient()
 
     async with client.video.connect() as socket:
-        stream = stream_video(socket, iter_video_frames("interview.mp4", fps=2))
+        stream = stream_video(socket, iter_video_frames("interview.mp4", fps=2, realtime=True))
         async for reply in stream:
             if reply.result is not None:
                 for face in reply.result.faces:
+                    if face.expressions is None:
+                        continue
                     top = ", ".join(f"{score.name} {score.probability:.2f}" for score in face.expressions[:3])
                     print(f"{reply.timestamp_ms:.0f} ms, face {face.face_id}: {top}")
             else:
@@ -338,7 +341,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-The server accepts the first 8 frames immediately and then 4 per second. `stream_video` sends the first 7 at once, keeping one in reserve for uneven network timing, and paces the rest. When the server rejects a frame with `rate_limited`, `stream_video` halves its send rate, down to one frame every 2 seconds, and raises it again gradually while frames are accepted, so a tighter limit than expected costs only a few rejected frames. What happens to the rejected frame depends on the source:
+`realtime=True` produces the frames as the video plays, as the endpoint expects. Without it, `stream_video` would send these frames, taken at 2 per second, at its full rate of 3 per second, faster than the video plays.
+
+`stream_video` sends frames no faster than 3 per second, the endpoint's send rate, counted from when streaming starts. A frame that arrives late leaves room for the next one to arrive early by as much, up to a third of a second, and still be sent rather than held back or dropped. When the server rejects a frame with `rate_limited`, `stream_video` halves its send rate, down to one frame every 2 seconds, and raises it again gradually while frames are accepted, so a tighter limit than expected costs only a few rejected frames. What happens to the rejected frame depends on the source:
 
 1. From a recording, the default, it sends the frame again once the lower rate allows, so every frame is measured. It also sends a frame once more after a retryable `internal_error`.
 2. From a live source, with `live=True`, it yields the rejection and moves on, so results keep up with the source. A live frame that arrives when the send rate has no room is not sent at all, and `stream.dropped_frames` counts it.
@@ -363,7 +368,7 @@ async with contextlib.aclosing(aiter(stream_video(socket, frames))) as replies:
 
 | Option | Default | Purpose |
 |---|---|---|
-| `fps` | 3 | Frames taken per second of video, above 0 and at most 4. |
+| `fps` | 3 | Frames taken per second of video, above 0 and at most 3. |
 | `max_width` | 1280 | Wider frames are scaled down to this width, keeping their shape. Narrower frames are left as they are. |
 | `realtime` | False | Produce frames no faster than the video plays, as a live source would. By default they are produced as fast as they are sent. |
 | `ffmpeg_path` | `ffmpeg` on `PATH` | The ffmpeg executable to run. |
@@ -372,7 +377,7 @@ async with contextlib.aclosing(aiter(stream_video(socket, frames))) as replies:
 
 ### Live sources
 
-`stream_video` measures frames from any source you can turn into an async iterable, such as a camera your application already captures. Encode each frame as a JPEG, give it a `timestamp_ms`, and pass `live=True`. A camera usually produces more frames than the 4 per second the endpoint accepts; `stream_video` sends what the send rate allows and counts the rest in `stream.dropped_frames`, so capturing fewer frames saves encoding work. Keep frames around 1280 pixels wide.
+`stream_video` measures frames from any source you can turn into an async iterable, such as a camera your application already captures. Encode each frame as a JPEG, give it a `timestamp_ms`, and pass `live=True`. A camera usually produces more frames than the 3 per second the endpoint accepts; `stream_video` sends what the send rate allows and counts the rest in `stream.dropped_frames`, so capturing no more than 3 frames per second saves encoding work. Keep frames around 1280 pixels wide.
 
 `JpegSplitter` turns a byte stream of concatenated JPEG images, such as ffmpeg's `image2pipe` output or the body of an MJPEG stream, into single images. Pass each chunk to `push`, which returns the images completed so far and holds back a partial one. This generator yields frames from such a stream, timed from when it starts:
 

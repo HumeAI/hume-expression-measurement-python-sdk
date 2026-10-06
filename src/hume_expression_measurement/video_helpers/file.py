@@ -35,7 +35,7 @@ def iter_video_frames(
         Path to the video file.
 
     fps : float
-        Frames per second to take from the video, above 0 and at most 4.
+        Frames per second to take from the video, above 0 and at most 3.
 
     max_width : int
         Frames wider than this many pixels are scaled down to it, keeping their shape. At least 16.

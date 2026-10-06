@@ -27,12 +27,13 @@ from websockets.exceptions import ConnectionClosed
 # is 2,000,000 or 2,097,152 bytes, so the smaller is used.
 _MAX_MESSAGE_BYTES = 2_000_000
 
-# The documented send rate is the first 8 frames at once, then 4 per second. The server also lets
-# unused allowance build up while the client pauses, but how far is not documented, so the client
-# allows no more than the first burst. The client keeps 1 frame of that in reserve: frames sent at
-# exactly the rate arrive unevenly, and the reserve absorbs up to 250 ms of that unevenness.
-_BURST_FRAMES = 7
-_FRAMES_PER_SECOND = 4
+# The documented send rate is 3 frames per second. Starting with 1 frame of allowance keeps the
+# client from ever getting ahead of that rate, counted from when streaming starts. Up to 2 frames of
+# allowance can build up, so that a live frame arriving early just after a late one is sent rather
+# than dropped.
+_STARTING_FRAMES = 1
+_BURST_FRAMES = 2
+_FRAMES_PER_SECOND = 3
 
 # The slowest rate the client falls back to, so that a recorded frame waits at most 2 seconds
 # before it is sent again.
@@ -403,14 +404,14 @@ class VideoStream:
                 reader.exception()
 
 
-# Mirrors the server's allowance, so that frames are not sent only to be rejected. It starts at
-# the documented rate and adapts to the rate the server accepts: it halves on each rejection and
-# climbs back slowly while frames are accepted, so a server whose limit is lower than documented
-# rejects a few frames rather than most of them.
+# Paces frames at the documented send rate, so that frames are not sent only to be rejected. It
+# adapts to the rate the server accepts: it halves on each rejection and climbs back slowly while
+# frames are accepted, so a server whose limit is lower than documented rejects a few frames rather
+# than most of them.
 class _Allowance:
     def __init__(self) -> None:
         self._rate: float = _FRAMES_PER_SECOND
-        self._frames: float = _BURST_FRAMES
+        self._frames: float = _STARTING_FRAMES
         # A monotonic clock, so that a change to the system clock cannot stall sending.
         self._updated_at = time.monotonic()
         self._sends = 0

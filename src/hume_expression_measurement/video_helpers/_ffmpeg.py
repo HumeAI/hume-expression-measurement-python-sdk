@@ -9,8 +9,9 @@ import typing
 
 from .jpeg import JpegSplitter
 
-# The realtime video endpoint accepts 4 frames per second once its initial allowance is spent.
-MAX_FPS = 4
+# The realtime video endpoint's documented send rate. Frames taken faster than this from a video
+# played in real time could not all be sent, and would fall further behind the longer it plays.
+MAX_FPS = 3
 
 # ffmpeg's scaler fails at a width of 1, and a narrower frame is too small to hold a measurable face.
 MIN_WIDTH = 16
