@@ -21,8 +21,8 @@ def iter_video_frames(
     `send_image_frame`.
 
     Frames are taken `fps` times per second of video, and each frame's `timestamp_ms` is its
-    position in the video. Any format ffmpeg can decode works. ffmpeg must be installed; it is
-    found on PATH unless `ffmpeg_path` is given.
+    position in the video, to the nearest millisecond. Any format ffmpeg can decode works. ffmpeg
+    must be installed; it is found on PATH unless `ffmpeg_path` is given.
 
     ffmpeg starts when iteration starts, so errors about the file are raised by the first
     `__anext__()` rather than by this call. Closing the generator stops ffmpeg. A loop left early
@@ -89,5 +89,5 @@ async def _read_frames(
     async with contextlib.aclosing(read_images(ffmpeg_path, args)) as images:
         index = 0
         async for data in images:
-            yield VideoFrame(data=data, timestamp_ms=index * 1000 / fps)
+            yield VideoFrame(data=data, timestamp_ms=round(index * 1000 / fps))
             index += 1

@@ -53,16 +53,19 @@ async def _collect(frames: typing.AsyncIterable[VideoFrame]) -> typing.List[Vide
 
 
 @_RUNS_A_SHELL_SCRIPT
-async def test_each_image_ffmpeg_writes_is_yielded_with_its_time_in_the_video(tmp_path: pathlib.Path) -> None:
-    images = [_jpeg(1), _jpeg(2), _jpeg(3)]
+async def test_each_image_ffmpeg_writes_is_yielded_with_its_time_in_the_video_to_the_nearest_millisecond(
+    tmp_path: pathlib.Path,
+) -> None:
+    images = [_jpeg(1), _jpeg(2), _jpeg(3), _jpeg(4)]
     ffmpeg_path = _fake_ffmpeg(tmp_path, "sys.stdout.buffer.write(images)", images)
 
-    frames = await _collect(iter_video_frames("interview.mp4", fps=2, ffmpeg_path=ffmpeg_path))
+    frames = await _collect(iter_video_frames("interview.mp4", fps=3, ffmpeg_path=ffmpeg_path))
 
     assert frames == [
         VideoFrame(data=images[0], timestamp_ms=0),
-        VideoFrame(data=images[1], timestamp_ms=500),
-        VideoFrame(data=images[2], timestamp_ms=1000),
+        VideoFrame(data=images[1], timestamp_ms=333),
+        VideoFrame(data=images[2], timestamp_ms=667),
+        VideoFrame(data=images[3], timestamp_ms=1000),
     ]
 
 

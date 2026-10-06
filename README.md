@@ -331,9 +331,9 @@ async def main() -> None:
                     if face.expressions is None:
                         continue
                     top = ", ".join(f"{score.name} {score.probability:.2f}" for score in face.expressions[:3])
-                    print(f"{reply.timestamp_ms:.0f} ms, face {face.face_id}: {top}")
+                    print(f"{reply.timestamp_ms} ms, face {face.face_id}: {top}")
             else:
-                print(f"{reply.timestamp_ms:.0f} ms: {reply.error.code}")
+                print(f"{reply.timestamp_ms} ms: {reply.error.code}")
         if stream.closed is not None:
             print(f"{stream.closed.produced.measurements} faces measured")
 
@@ -393,7 +393,7 @@ async def frames_from(mjpeg: typing.AsyncIterable[bytes]) -> typing.AsyncIterato
     start = time.monotonic()
     async for chunk in mjpeg:
         for data in splitter.push(chunk):
-            yield VideoFrame(data=data, timestamp_ms=(time.monotonic() - start) * 1000)
+            yield VideoFrame(data=data, timestamp_ms=round((time.monotonic() - start) * 1000))
 
 
 async for reply in stream_video(socket, frames_from(mjpeg), live=True):
