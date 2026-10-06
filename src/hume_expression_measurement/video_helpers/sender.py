@@ -29,7 +29,7 @@ _MAX_MESSAGE_BYTES = 2_000_000
 
 # The documented send rate is 3 frames per second. Starting with 1 frame of allowance keeps the
 # client from ever getting ahead of that rate, counted from when streaming starts. Up to 2 frames of
-# allowance can build up, so that a live frame arriving early just after a late one is sent rather
+# allowance can build up, so that a live frame arriving on time just after a late one is sent rather
 # than dropped.
 _STARTING_FRAMES = 1
 _BURST_FRAMES = 2
