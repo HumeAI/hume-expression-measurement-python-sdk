@@ -114,14 +114,20 @@ generations:
     cli_version: unknown
     generator_versions:
       fernapi/fern-python-sdk: 5.33.1
-current_generation: 759c22b60cf5bd50f373e7f2582d126791f96937
+  - commit_sha: ee50e93c345b4d0724b266976aac0e3ba1fa0654
+    tree_hash: d7e5ad777b5cb6e2ba46294a13ad20b217df1549
+    timestamp: 2026-10-06T13:01:02.492Z
+    cli_version: unknown
+    generator_versions:
+      fernapi/fern-python-sdk: 5.33.1
+current_generation: ee50e93c345b4d0724b266976aac0e3ba1fa0654
 patches:
   - id: patch-6cd46075
     content_hash: sha256:66cb4b7e729f92c8c1060c1a31f3a832758c176793be9249342f80ceb7d1f8a2
     original_commit: 6cd4607592b7d68bfde2297caf9edc41ef984415
     original_message: read the error of a reconnect task that no receive waits on so asyncio does not report it as never retrieved, build the reconnecting sockets through a _create classmethod, and correct the stream_video guard comment, the construction error message and the iteration wording
     original_author: zach <zachary.greathouse@hume.ai>
-    base_generation: 759c22b60cf5bd50f373e7f2582d126791f96937
+    base_generation: ee50e93c345b4d0724b266976aac0e3ba1fa0654
     files:
       - src/hume_expression_measurement/core/websocket_compat.py
     patch_content: |
@@ -188,7 +194,7 @@ patches:
     original_commit: dac996b5970f7401f21b870da49b8076c87fcf1b
     original_message: Pace realtime streaming at the documented send rates (#35)
     original_author: Zachary Greathouse <26175515+zgreathouse@users.noreply.github.com>
-    base_generation: 759c22b60cf5bd50f373e7f2582d126791f96937
+    base_generation: ee50e93c345b4d0724b266976aac0e3ba1fa0654
     files:
       - .github/workflows/ci.yml
     patch_content: |
@@ -329,3 +335,4 @@ patches:
                 uses: pypa/gh-action-pypi-publish@release/v1
                 with:
                   repository-url: https://upload.pypi.org/legacy/
+    user_owned: true
