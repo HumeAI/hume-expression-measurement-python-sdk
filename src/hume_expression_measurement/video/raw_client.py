@@ -17,7 +17,7 @@ from ..core.pydantic_utilities import parse_obj_as
 from ..core.query_encoder import encode_query
 from ..core.remove_none_from_dict import remove_none_from_dict
 from ..core.request_options import RequestOptions
-from ..core.websocket_compat import InvalidWebSocketStatus, get_status_code
+from ..core.websocket_compat import InvalidWebSocketStatus, get_response_headers, get_status_code
 from ..errors.bad_request_error import BadRequestError
 from ..errors.content_too_large_error import ContentTooLargeError
 from ..errors.forbidden_error import ForbiddenError
@@ -32,6 +32,7 @@ from ..types.video_file_config import VideoFileConfig
 from ..types.video_file_response import VideoFileResponse
 from .socket_client import AsyncVideoSocketClient, VideoSocketClient
 from pydantic import ValidationError
+from websockets.exceptions import InvalidStatus
 
 try:
     from websockets.legacy.client import connect as websockets_client_connect  # type: ignore
@@ -317,17 +318,17 @@ class RawVideoClient:
         try:
             with websockets_sync_client.connect(ws_url, additional_headers=headers) as protocol:
                 yield VideoSocketClient(websocket=protocol)
-        except InvalidWebSocketStatus as exc:
-            status_code: int = get_status_code(exc)
+        except InvalidStatus as exc:
+            status_code: int = exc.response.status_code
             if status_code == 401:
                 raise ApiError(
                     status_code=status_code,
-                    headers=dict(headers),
+                    headers=get_response_headers(exc),
                     body="Websocket initialized with invalid credentials.",
                 )
             raise ApiError(
                 status_code=status_code,
-                headers=dict(headers),
+                headers=get_response_headers(exc),
                 body="Unexpected error when initializing websocket connection.",
             )
 
@@ -614,11 +615,11 @@ class AsyncRawVideoClient:
             if status_code == 401:
                 raise ApiError(
                     status_code=status_code,
-                    headers=dict(headers),
+                    headers=get_response_headers(exc),
                     body="Websocket initialized with invalid credentials.",
                 )
             raise ApiError(
                 status_code=status_code,
-                headers=dict(headers),
+                headers=get_response_headers(exc),
                 body="Unexpected error when initializing websocket connection.",
             )
