@@ -12,12 +12,11 @@ from ..core.jsonable_encoder import jsonable_encoder
 from ..core.query_encoder import encode_query
 from ..core.remove_none_from_dict import remove_none_from_dict
 from ..core.request_options import RequestOptions
-from ..core.websocket_compat import InvalidWebSocketStatus, get_response_headers, get_status_code
+from ..core.websocket_compat import InvalidWebSocketStatus, get_status_code
 from ..types.audio_file_config import AudioFileConfig
 from ..types.audio_file_response import AudioFileResponse
 from .raw_client import AsyncRawAudioClient, RawAudioClient
 from .socket_client import AsyncAudioSocketClient, AudioSocketClient
-from websockets.exceptions import InvalidStatus
 
 try:
     from websockets.legacy.client import connect as websockets_client_connect  # type: ignore
@@ -112,8 +111,8 @@ class AudioClient:
         Send audio as binary messages of signed 16-bit little-endian PCM, mono, 16 kHz, with no header. Frames of around 100 ms work well. You can cut the audio at any sample boundary; the server joins the frames into one continuous stream.
 
         - **Configuration:** send `session.update` before your first audio frame. A `session.update` after your first audio frame ends the session with `config_invalid`.
-        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. Accepted frames are not acknowledged.
-        - **Send rate:** you can send faster than real time. The server accepts the first 30 seconds of audio immediately, then 2 seconds of audio per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous.
+        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. A message over 1MiB ends the session with `message_too_large`. Accepted frames are not acknowledged.
+        - **Send rate:** stream audio in close to real time, no faster than 1 second of audio per second. A frame sent faster can get `rate_limited`, and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous. To measure a recording faster than it plays, use the audio file endpoint.
         - **Failures:** if measurement fails, you receive `internal_error` and the session ends. Open a new connection.
 
         ## How measurements are produced
@@ -130,7 +129,8 @@ class AudioClient:
         | Limit | Value |
         |---|---|
         | Audio per frame | 10 seconds (320KB) |
-        | Send rate | 30 seconds of audio immediately, then 2 seconds of audio per second |
+        | Message size | 1MiB (1,048,576 bytes) |
+        | Send rate | 1 second of audio per second |
 
         ## Message flow
 
@@ -182,17 +182,17 @@ class AudioClient:
         try:
             with websockets_sync_client.connect(ws_url, additional_headers=headers) as protocol:
                 yield AudioSocketClient(websocket=protocol)
-        except InvalidStatus as exc:
-            status_code: int = exc.response.status_code
+        except InvalidWebSocketStatus as exc:
+            status_code: int = get_status_code(exc)
             if status_code == 401:
                 raise ApiError(
                     status_code=status_code,
-                    headers=get_response_headers(exc),
+                    headers=dict(headers),
                     body="Websocket initialized with invalid credentials.",
                 )
             raise ApiError(
                 status_code=status_code,
-                headers=get_response_headers(exc),
+                headers=dict(headers),
                 body="Unexpected error when initializing websocket connection.",
             )
 
@@ -291,8 +291,8 @@ class AsyncAudioClient:
         Send audio as binary messages of signed 16-bit little-endian PCM, mono, 16 kHz, with no header. Frames of around 100 ms work well. You can cut the audio at any sample boundary; the server joins the frames into one continuous stream.
 
         - **Configuration:** send `session.update` before your first audio frame. A `session.update` after your first audio frame ends the session with `config_invalid`.
-        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. Accepted frames are not acknowledged.
-        - **Send rate:** you can send faster than real time. The server accepts the first 30 seconds of audio immediately, then 2 seconds of audio per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous.
+        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. A message over 1MiB ends the session with `message_too_large`. Accepted frames are not acknowledged.
+        - **Send rate:** stream audio in close to real time, no faster than 1 second of audio per second. A frame sent faster can get `rate_limited`, and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous. To measure a recording faster than it plays, use the audio file endpoint.
         - **Failures:** if measurement fails, you receive `internal_error` and the session ends. Open a new connection.
 
         ## How measurements are produced
@@ -309,7 +309,8 @@ class AsyncAudioClient:
         | Limit | Value |
         |---|---|
         | Audio per frame | 10 seconds (320KB) |
-        | Send rate | 30 seconds of audio immediately, then 2 seconds of audio per second |
+        | Message size | 1MiB (1,048,576 bytes) |
+        | Send rate | 1 second of audio per second |
 
         ## Message flow
 
@@ -366,11 +367,11 @@ class AsyncAudioClient:
             if status_code == 401:
                 raise ApiError(
                     status_code=status_code,
-                    headers=get_response_headers(exc),
+                    headers=dict(headers),
                     body="Websocket initialized with invalid credentials.",
                 )
             raise ApiError(
                 status_code=status_code,
-                headers=get_response_headers(exc),
+                headers=dict(headers),
                 body="Unexpected error when initializing websocket connection.",
             )

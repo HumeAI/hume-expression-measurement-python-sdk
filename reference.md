@@ -424,7 +424,7 @@ client.runs.get(
 <dl>
 <dd>
 
-The problems the run reported, in order: frames it rejected and failures it hit. A run that went well has none. Only realtime sessions record them, except `video_recording_abandoned`, which a video file run can also record.
+The problems the run reported, in order: frames it rejected and failures it hit. A run that went well has none. Only realtime sessions record them.
 </dd>
 </dl>
 </dd>

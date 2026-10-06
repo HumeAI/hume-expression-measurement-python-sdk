@@ -16,6 +16,7 @@ RequestErrorCode = typing.Union[
         "image_too_large",
         "unsupported_media_type",
         "internal_error",
+        "server_busy",
     ],
     typing.Any,
 ]
