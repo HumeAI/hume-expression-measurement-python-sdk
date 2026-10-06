@@ -86,7 +86,7 @@ for result in response.measurements:
 
 ## Quickstart: realtime
 
-The realtime endpoints take media that is still arriving, such as audio from a live microphone or images from a camera, and send measurements as they are produced.
+The realtime endpoints take media that is still arriving, such as audio from a live microphone or images from a camera, and send measurements as they are produced. A socket from `connect()` ends when its connection does; to continue after a server restart or a dropped connection, see [Reconnecting](#reconnecting).
 
 ### Audio
 
@@ -434,6 +434,69 @@ socket.send_video_session_update(
 )
 ```
 
+## Reconnecting
+
+`reconnecting` from `hume_expression_measurement.reconnect` connects in place of `connect()` and yields a socket with the same send methods, `recv()`, and iteration. When the connection ends unexpectedly, the socket connects again, which starts a new session. It reconnects after:
+
+1. A `session.closed` with `reason` set to `server_shutdown`, which the server sends when it shuts down, as during a deployment.
+2. The connection closing with code 1001, 1011, 1012, or 1013, or ending without a close frame, as when it drops.
+3. An audio `internal_error`, after which the API asks for a new connection.
+
+Any other close is final, and so is any close after you send `session.close` or leave the block. Receiving is what notices a close and reconnects, so keep iterating or calling `recv()` while the session runs. This example measures the microphone until the socket stops reconnecting:
+
+```python
+import asyncio
+
+from hume_expression_measurement import (
+    AsyncExpressionMeasurementClient,
+    AudioMeasurementResult,
+    AudioSessionCreated,
+    AudioSessionUpdate,
+)
+from hume_expression_measurement.audio_helpers import Microphone
+from hume_expression_measurement.reconnect import reconnecting
+from websockets.exceptions import ConnectionClosed
+
+
+async def main() -> None:
+    client = AsyncExpressionMeasurementClient()
+
+    async with Microphone.open() as microphone, reconnecting(client.audio) as socket:
+        await socket.send_audio_session_update(AudioSessionUpdate(type="session.update", measurement_timer_ms=5000))
+
+        async def send_audio() -> None:
+            async for frame in microphone:
+                try:
+                    await socket.send_audio_frame(frame)
+                except ConnectionClosed:
+                    # Audio recorded while the socket reconnects is skipped.
+                    continue
+
+        sender = asyncio.create_task(send_audio())
+        try:
+            async for message in socket:
+                if isinstance(message, AudioSessionCreated):
+                    print(f"session {message.session_id}")
+                elif isinstance(message, AudioMeasurementResult):
+                    top = ", ".join(f"{score.name} {score.probability:.2f}" for score in message.expressions[:3])
+                    print(f"utterance {message.utterance_id}: {top}")
+        finally:
+            sender.cancel()
+
+
+asyncio.run(main())
+```
+
+With `ExpressionMeasurementClient`, enter `reconnecting(client.audio)` with `with`. Its socket accepts sends from other threads while one thread receives, so send from one thread and iterate in another.
+
+The first attempt waits 1 to 5 seconds, and each later attempt 1.3 times as long as the one before, up to 10 seconds. An attempt that fails with a network error, a timeout, or a 408, 429, or 5xx status is retried, up to 30 attempts in a row, and the count starts again once a connection has stayed open for 5 seconds. When 30 attempts in a row have failed, receiving raises the last attempt's error. An attempt refused with any other 4xx status, such as 401 for an API key that is no longer valid, is not retried, and receiving raises its error at once. A failed first connection is not retried, since a wrong URL or API key would fail the same way again: entering the block raises what `connect()` raises.
+
+A new session does not continue the previous one. Every message is passed on, so you receive the previous session's `session.closed`, if it sent one, then `session.created` again with a new session ID, and so a new run. IDs and times in the new session's results start again from 0. Results for media that the previous session had received but not yet measured never arrive. The new session receives your last `session.update` before anything else, and the server confirms it with `session.updated` as usual.
+
+While the socket reconnects, sending raises `websockets.exceptions.ConnectionClosed` and has no effect, except that `session.close` stops the reconnect. A live source can skip frames until sending succeeds again, as the example does. A recording loses whatever the previous session had not measured, so rather than skip frames, let the error end the loop and leave the block, which stops the reconnect. Then send the recording again on a new connection or [upload](#quickstart-upload) it.
+
+`stream_video` does not reconnect. It raises a `SessionEndedError` when the session or the connection ends before the frames do, and a `TypeError` when given a socket from `reconnecting`.
+
 ## Runs
 
 Every upload request that is measured and every realtime session is recorded as a run. A run's ID is the `run_id` of an upload response or the `session_id` of a session. The run endpoints return a run's status, configuration, and event log. They do not return measurements, so keep the results you need from the upload response or the session.
@@ -470,7 +533,7 @@ except ApiError as error:
     print(f"{error.status_code}: {error.body}")
 ```
 
-Problems during a session arrive as `error` messages rather than exceptions. A rejected frame, such as `invalid_audio_frame`, `invalid_image_frame`, or `rate_limited`, is discarded and the session continues. `config_invalid`, `message_too_large`, an audio `internal_error`, and five consecutive video `internal_error` messages end the session, and `session.closed` follows with `reason` set to `error`. `connect()` raises `ApiError` when the WebSocket handshake fails. A status code of 401 means the API key was rejected.
+Problems during a session arrive as `error` messages rather than exceptions. A rejected frame, such as `invalid_audio_frame`, `invalid_image_frame`, or `rate_limited`, is discarded and the session continues. `config_invalid`, `message_too_large`, an audio `internal_error`, and five consecutive video `internal_error` messages end the session, and `session.closed` follows with `reason` set to `error`. When the server refuses the WebSocket handshake, `connect()` on the async client raises `ApiError` with the HTTP status in `status_code`, and on the sync client it raises `websockets.exceptions.InvalidStatus` with the status in `response.status_code`. A status of 401 means the API key was rejected. A socket from [`reconnecting`](#reconnecting) raises the same errors when the server refuses a reconnect.
 
 [Errors](https://dev.hume.ai/expression-measurement/docs/errors) lists every code and whether to retry.
 

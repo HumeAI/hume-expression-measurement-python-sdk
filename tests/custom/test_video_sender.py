@@ -10,6 +10,7 @@ from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
 from hume_expression_measurement import AsyncExpressionMeasurementClient, ExpressionMeasurementClientEnvironment
+from hume_expression_measurement.reconnect import reconnecting
 from hume_expression_measurement.video.socket_client import AsyncVideoSocketClient
 from hume_expression_measurement.video_helpers import (
     SessionEndedError,
@@ -89,7 +90,9 @@ def _closing_session(reason: str, code: int) -> _Action:
 
 
 @contextlib.asynccontextmanager
-async def _connect(respond: _Respond) -> typing.AsyncIterator[typing.Tuple[AsyncVideoSocketClient, _FakeServer]]:
+async def _serving(
+    respond: _Respond,
+) -> typing.AsyncIterator[typing.Tuple[AsyncExpressionMeasurementClient, _FakeServer]]:
     server = _FakeServer(respond)
     # No size limit, so that the server receives the frames the client must not send.
     async with serve(server.handle, "127.0.0.1", 0, max_size=None) as listener:
@@ -97,9 +100,13 @@ async def _connect(respond: _Respond) -> typing.AsyncIterator[typing.Tuple[Async
         environment = ExpressionMeasurementClientEnvironment(
             base="http://127.0.0.1", production=f"ws://127.0.0.1:{port}"
         )
-        client = AsyncExpressionMeasurementClient(api_key="test-key", environment=environment)
-        async with client.video.connect() as socket:
-            yield socket, server
+        yield AsyncExpressionMeasurementClient(api_key="test-key", environment=environment), server
+
+
+@contextlib.asynccontextmanager
+async def _connect(respond: _Respond) -> typing.AsyncIterator[typing.Tuple[AsyncVideoSocketClient, _FakeServer]]:
+    async with _serving(respond) as (client, server), client.video.connect() as socket:
+        yield socket, server
 
 
 # Each frame's first byte identifies it to the fake server, and its timestamp is 100 times that.
@@ -428,6 +435,12 @@ async def test_frames_that_are_not_an_async_iterable_raise_type_error() -> None:
     async with _connect(lambda frame_id, attempt: [_RESULT]) as (socket, _):
         with pytest.raises(TypeError, match="frames must be an async iterable"):
             stream_video(socket, typing.cast(typing.Any, [_frame(0)]))
+
+
+async def test_a_socket_from_reconnecting_raises_type_error() -> None:
+    async with _serving(lambda frame_id, attempt: [_RESULT]) as (client, _), reconnecting(client.video) as socket:
+        with pytest.raises(TypeError, match="stream_video does not reconnect"):
+            stream_video(typing.cast(typing.Any, socket), _frames_of(_frame(0)))
 
 
 async def test_a_stream_can_be_iterated_only_once() -> None:
