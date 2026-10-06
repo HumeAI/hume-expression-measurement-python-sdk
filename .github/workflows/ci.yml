@@ -89,6 +89,15 @@ jobs:
         with:
           name: python-package-distributions
           path: dist/
+      # A published version can never be published again, so a tag on the wrong commit must fail
+      # here rather than release whatever version that commit holds.
+      - name: Check the tag matches the package version
+        run: |
+          PKG_VERSION=$(basename dist/*.whl | cut -d- -f2)
+          if [[ "${GITHUB_REF_NAME}" != "v${PKG_VERSION}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${PKG_VERSION}."
+            exit 1
+          fi
       - name: Publish to pypi with attestations
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
