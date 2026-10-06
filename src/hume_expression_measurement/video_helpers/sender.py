@@ -183,9 +183,9 @@ def stream_video(
     """
     if not isinstance(frames, collections.abc.AsyncIterable):
         raise TypeError("frames must be an async iterable of frames, such as from iter_video_frames.")
-    # Type checkers miss this mistake, because `client.video` is not annotated. A reconnect would
-    # start a new session partway through the stream, whose replies would be paired with frames
-    # the previous session never answered.
+    # Type checkers reject this socket, but code that is not type checked can still pass it. A
+    # reconnect would start a new session partway through the stream, whose replies would be
+    # paired with frames the previous session never answered.
     if isinstance(socket, AsyncReconnectingVideoSocket):
         raise TypeError(
             "stream_video does not reconnect. Pass a socket from `client.video.connect()` rather than from `reconnecting()`."

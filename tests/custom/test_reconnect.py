@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import contextlib
+import gc
 import json
 import time
 import typing
@@ -452,6 +453,30 @@ async def test_a_receive_that_times_out_leaves_the_reconnect_running_for_the_nex
         assert isinstance(message, AudioSessionCreated)
         assert message.session_id == "session-2"
         assert len(server.requests) == 2
+
+
+# A sync receive cannot be cancelled, so this covers the async client only.
+async def test_an_error_from_a_reconnect_that_no_receive_waits_on_is_not_reported_as_never_retrieved() -> None:
+    reported: typing.List[typing.Dict[str, typing.Any]] = []
+    asyncio.get_running_loop().set_exception_handler(lambda loop, context: reported.append(context))
+    server = _FakeServer("audio")
+    async with _serving(server) as port:
+        async with _connect_audio("async", port) as socket:
+            assert isinstance(await asyncio.wait_for(socket.recv(), _TIMEOUT), AudioSessionCreated)
+            release = server.hold_handshakes()
+            server.refuse_next(401)
+            await server.sessions[0].close(1012)
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(socket.recv(), 0.2)
+            assert len(server.requests) == 2
+        release.set()
+        # The refusal ends the reconnect, the only other task left.
+        await _until(lambda: asyncio.all_tasks() == {asyncio.current_task()})
+    del socket
+    # Collects the reconnect task, which asyncio reports if no one read its error.
+    gc.collect()
+
+    assert reported == []
 
 
 async def test_iteration_skips_messages_it_cannot_parse_as_the_socket_from_connect_does(kind: _Kind) -> None:

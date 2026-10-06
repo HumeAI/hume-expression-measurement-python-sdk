@@ -440,6 +440,7 @@ async def test_frames_that_are_not_an_async_iterable_raise_type_error() -> None:
 async def test_a_socket_from_reconnecting_raises_type_error() -> None:
     async with _serving(lambda frame_id, attempt: [_RESULT]) as (client, _), reconnecting(client.video) as socket:
         with pytest.raises(TypeError, match="stream_video does not reconnect"):
+            # Type checkers reject this socket, so the cast stands in for code that is not type checked.
             stream_video(typing.cast(typing.Any, socket), _frames_of(_frame(0)))
 
 

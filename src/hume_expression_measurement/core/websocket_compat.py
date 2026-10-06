@@ -19,8 +19,8 @@ except ImportError:
 
 
 def get_response_headers(exc: typing.Union[InvalidStatus, InvalidWebSocketStatus]) -> typing.Dict[str, str]:
-    # The sync client and the current async client raise InvalidStatus, which holds the headers on
-    # its response. The legacy async client's exception holds them itself.
+    # The sync client and websockets' newer asyncio client raise InvalidStatus, which holds the
+    # headers on its response. The exception from websockets' legacy client holds them itself.
     headers: Headers = exc.response.headers if isinstance(exc, InvalidStatus) else exc.headers
     # Matches the headers of an HTTP ApiError, which httpx gives with lowercase names and a
     # repeated header's values joined.

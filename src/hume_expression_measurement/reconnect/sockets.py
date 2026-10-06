@@ -7,6 +7,7 @@ import json
 import threading
 import typing
 
+import typing_extensions
 from ..audio.client import AsyncAudioClient, AudioClient
 from ..audio.socket_client import AsyncAudioSocketClient, AudioSocketClient, AudioSocketClientResponse
 from ..core.request_options import RequestOptions
@@ -23,6 +24,11 @@ _ResponseT = typing.TypeVar("_ResponseT")
 _UpdateT = typing.TypeVar("_UpdateT")
 
 
+def _read_error(task: "asyncio.Task[bool]") -> None:
+    if not task.cancelled():
+        task.exception()
+
+
 class _AsyncReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _UpdateT]):
     _ENDPOINT: typing.ClassVar[Endpoint]
     # The socket from `connect()` for the current session. While a reconnect is under way it is
@@ -31,8 +37,15 @@ class _AsyncReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _Up
 
     def __init__(self) -> None:
         raise TypeError(
-            f"Connect a {type(self).__name__} with `async with reconnecting(client.{self._ENDPOINT}) as socket:`."
+            f"Connect with `async with reconnecting(client.{self._ENDPOINT}) as socket:` rather than "
+            f"constructing {type(self).__name__}."
         )
+
+    @classmethod
+    def _create(cls, connect: typing.Callable[[], typing.AsyncContextManager[_SocketT]]) -> typing_extensions.Self:
+        socket = cls.__new__(cls)
+        socket._setup(connect)
+        return socket
 
     def _setup(self, connect: typing.Callable[[], typing.AsyncContextManager[_SocketT]]) -> None:
         self._connect = connect
@@ -83,6 +96,9 @@ class _AsyncReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _Up
             reconnecting = self._reconnecting
             if reconnecting is None:
                 reconnecting = self._reconnecting = asyncio.create_task(self._reconnect(closed))
+                # Its error reaches the next receive, if one follows. Reading it here as well keeps
+                # asyncio from reporting it as never retrieved when none does.
+                reconnecting.add_done_callback(_read_error)
             # Outside the except clause, so that an error from reconnecting keeps its own context.
             # Shielded, so that cancelling this receive leaves the reconnect running for the next
             # receive to wait on, rather than starting another attempt.
@@ -255,8 +271,15 @@ class _ReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _UpdateT
 
     def __init__(self) -> None:
         raise TypeError(
-            f"Connect a {type(self).__name__} with `with reconnecting(client.{self._ENDPOINT}) as socket:`."
+            f"Connect with `with reconnecting(client.{self._ENDPOINT}) as socket:` rather than "
+            f"constructing {type(self).__name__}."
         )
+
+    @classmethod
+    def _create(cls, connect: typing.Callable[[], typing.ContextManager[_SocketT]]) -> typing_extensions.Self:
+        socket = cls.__new__(cls)
+        socket._setup(connect)
+        return socket
 
     def _setup(self, connect: typing.Callable[[], typing.ContextManager[_SocketT]]) -> None:
         self._connect = connect
@@ -538,8 +561,8 @@ def reconnecting(
     A new session does not continue the previous one. Every message is passed on, so you receive
     the previous session's `session.closed`, if it sent one, then `session.created` again, with a
     new session ID, which is also a new run ID. Keep receiving after a `session.closed` rather than
-    stopping there, since the socket reconnects only while you receive. Iteration ends by itself
-    once the socket has ended for good. IDs and times in the new session's results start
+    stopping there, since the socket reconnects only while you receive. Once the socket has ended
+    for good, iteration ends or raises on its own. IDs and times in the new session's results start
     again from 0. Results for media the previous session had received but not yet measured never
     arrive. The new session receives your last `session.update` before anything else.
 
@@ -616,24 +639,20 @@ def reconnecting(
     """
     if isinstance(resource, AudioClient):
         audio = resource
-        audio_socket = ReconnectingAudioSocket.__new__(ReconnectingAudioSocket)
-        audio_socket._setup(lambda: audio.connect(request_options=request_options))
-        return _connected(audio_socket)
+        return _connected(ReconnectingAudioSocket._create(lambda: audio.connect(request_options=request_options)))
     if isinstance(resource, VideoClient):
         video = resource
-        video_socket = ReconnectingVideoSocket.__new__(ReconnectingVideoSocket)
-        video_socket._setup(lambda: video.connect(request_options=request_options))
-        return _connected(video_socket)
+        return _connected(ReconnectingVideoSocket._create(lambda: video.connect(request_options=request_options)))
     if isinstance(resource, AsyncAudioClient):
         async_audio = resource
-        async_audio_socket = AsyncReconnectingAudioSocket.__new__(AsyncReconnectingAudioSocket)
-        async_audio_socket._setup(lambda: async_audio.connect(request_options=request_options))
-        return _async_connected(async_audio_socket)
+        return _async_connected(
+            AsyncReconnectingAudioSocket._create(lambda: async_audio.connect(request_options=request_options))
+        )
     if isinstance(resource, AsyncVideoClient):
         async_video = resource
-        async_video_socket = AsyncReconnectingVideoSocket.__new__(AsyncReconnectingVideoSocket)
-        async_video_socket._setup(lambda: async_video.connect(request_options=request_options))
-        return _async_connected(async_video_socket)
+        return _async_connected(
+            AsyncReconnectingVideoSocket._create(lambda: async_video.connect(request_options=request_options))
+        )
     raise TypeError(
         "reconnecting takes client.audio or client.video of an ExpressionMeasurementClient or an "
         "AsyncExpressionMeasurementClient."
