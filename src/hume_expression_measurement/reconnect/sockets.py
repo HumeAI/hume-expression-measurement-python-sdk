@@ -29,7 +29,12 @@ class _AsyncReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _Up
     # the closed one, so that sending raises as it does on any closed socket.
     _socket: _SocketT
 
-    def __init__(self, connect: typing.Callable[[], typing.AsyncContextManager[_SocketT]]) -> None:
+    def __init__(self) -> None:
+        raise TypeError(
+            f"Connect a {type(self).__name__} with `async with reconnecting(client.{self._ENDPOINT}) as socket:`."
+        )
+
+    def _setup(self, connect: typing.Callable[[], typing.AsyncContextManager[_SocketT]]) -> None:
         self._connect = connect
         self._connection = contextlib.AsyncExitStack()
         self._session = Session(self._ENDPOINT)
@@ -217,8 +222,8 @@ class AsyncReconnectingVideoSocket(
     async def send_video_session_update(self, message: VideoSessionUpdate) -> None:
         """
         Send the configuration, which each new session after a reconnect also receives before
-        anything else. Send it before the first frame, since the configuration locks at the first
-        frame.
+        anything else. Send it before the first frame: a `session.update` after a frame ends the
+        session with `config_invalid`.
         """
         await self._socket.send_video_session_update(message)
         self._update = message
@@ -248,7 +253,12 @@ class _ReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _UpdateT
     # the closed one, so that sending raises as it does on any closed socket.
     _socket: _SocketT
 
-    def __init__(self, connect: typing.Callable[[], typing.ContextManager[_SocketT]]) -> None:
+    def __init__(self) -> None:
+        raise TypeError(
+            f"Connect a {type(self).__name__} with `with reconnecting(client.{self._ENDPOINT}) as socket:`."
+        )
+
+    def _setup(self, connect: typing.Callable[[], typing.ContextManager[_SocketT]]) -> None:
         self._connect = connect
         self._connection = contextlib.ExitStack()
         self._session = Session(self._ENDPOINT)
@@ -429,8 +439,8 @@ class ReconnectingVideoSocket(_ReconnectingSocket[VideoSocketClient, VideoSocket
     def send_video_session_update(self, message: VideoSessionUpdate) -> None:
         """
         Send the configuration, which each new session after a reconnect also receives before
-        anything else. Send it before the first frame, since the configuration locks at the first
-        frame.
+        anything else. Send it before the first frame: a `session.update` after a frame ends the
+        session with `config_invalid`.
         """
         self._socket.send_video_session_update(message)
         self._update = message
@@ -527,7 +537,9 @@ def reconnecting(
 
     A new session does not continue the previous one. Every message is passed on, so you receive
     the previous session's `session.closed`, if it sent one, then `session.created` again, with a
-    new session ID, which is also a new run ID. IDs and times in the new session's results start
+    new session ID, which is also a new run ID. Keep receiving after a `session.closed` rather than
+    stopping there, since the socket reconnects only while you receive. Iteration ends by itself
+    once the socket has ended for good. IDs and times in the new session's results start
     again from 0. Results for media the previous session had received but not yet measured never
     arrive. The new session receives your last `session.update` before anything else.
 
@@ -579,41 +591,49 @@ def reconnecting(
     import asyncio
 
     from hume_expression_measurement import AsyncExpressionMeasurementClient, AudioSessionCreated
+    from hume_expression_measurement.audio_helpers import Microphone
     from hume_expression_measurement.reconnect import reconnecting
     from websockets.exceptions import ConnectionClosed
 
     client = AsyncExpressionMeasurementClient(api_key="YOUR_API_KEY")
-    async with reconnecting(client.audio) as socket:
+    async with Microphone.open() as microphone, reconnecting(client.audio) as socket:
 
-        async def send(frames):
-            async for frame in frames:
+        async def send_audio():
+            async for frame in microphone:
                 try:
                     await socket.send_audio_frame(frame)
                 except ConnectionClosed:
                     # Skipped while the socket reconnects.
                     continue
 
-        sender = asyncio.create_task(send(microphone))
-        async for message in socket:
-            if isinstance(message, AudioSessionCreated):
-                print("session", message.session_id)
+        sender = asyncio.create_task(send_audio())
+        try:
+            async for message in socket:
+                if isinstance(message, AudioSessionCreated):
+                    print("session", message.session_id)
+        finally:
+            sender.cancel()
     """
     if isinstance(resource, AudioClient):
         audio = resource
-        return _connected(ReconnectingAudioSocket(lambda: audio.connect(request_options=request_options)))
+        audio_socket = ReconnectingAudioSocket.__new__(ReconnectingAudioSocket)
+        audio_socket._setup(lambda: audio.connect(request_options=request_options))
+        return _connected(audio_socket)
     if isinstance(resource, VideoClient):
         video = resource
-        return _connected(ReconnectingVideoSocket(lambda: video.connect(request_options=request_options)))
+        video_socket = ReconnectingVideoSocket.__new__(ReconnectingVideoSocket)
+        video_socket._setup(lambda: video.connect(request_options=request_options))
+        return _connected(video_socket)
     if isinstance(resource, AsyncAudioClient):
         async_audio = resource
-        return _async_connected(
-            AsyncReconnectingAudioSocket(lambda: async_audio.connect(request_options=request_options))
-        )
+        async_audio_socket = AsyncReconnectingAudioSocket.__new__(AsyncReconnectingAudioSocket)
+        async_audio_socket._setup(lambda: async_audio.connect(request_options=request_options))
+        return _async_connected(async_audio_socket)
     if isinstance(resource, AsyncVideoClient):
         async_video = resource
-        return _async_connected(
-            AsyncReconnectingVideoSocket(lambda: async_video.connect(request_options=request_options))
-        )
+        async_video_socket = AsyncReconnectingVideoSocket.__new__(AsyncReconnectingVideoSocket)
+        async_video_socket._setup(lambda: async_video.connect(request_options=request_options))
+        return _async_connected(async_video_socket)
     raise TypeError(
         "reconnecting takes client.audio or client.video of an ExpressionMeasurementClient or an "
         "AsyncExpressionMeasurementClient."

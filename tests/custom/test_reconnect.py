@@ -24,6 +24,8 @@ from hume_expression_measurement import (
 )
 from hume_expression_measurement.core import ApiError, RequestOptions
 from hume_expression_measurement.reconnect import (
+    AsyncReconnectingAudioSocket,
+    AsyncReconnectingVideoSocket,
     ReconnectingAudioSocket,
     ReconnectingVideoSocket,
     _policy,
@@ -818,3 +820,19 @@ async def test_every_connection_carries_the_request_options(kind: _Kind) -> None
 def test_a_resource_other_than_audio_or_video_raises_type_error(kind: _Kind) -> None:
     with pytest.raises(TypeError):
         reconnecting(_client(kind, 1).runs)
+
+
+@pytest.mark.parametrize(
+    ("socket_class", "entry_point"),
+    [
+        pytest.param(AsyncReconnectingAudioSocket, r"`async with reconnecting\(client\.audio\)", id="async audio"),
+        pytest.param(AsyncReconnectingVideoSocket, r"`async with reconnecting\(client\.video\)", id="async video"),
+        pytest.param(ReconnectingAudioSocket, r"`with reconnecting\(client\.audio\)", id="sync audio"),
+        pytest.param(ReconnectingVideoSocket, r"`with reconnecting\(client\.video\)", id="sync video"),
+    ],
+)
+def test_constructing_a_socket_directly_points_to_reconnecting(
+    socket_class: typing.Callable[[], object], entry_point: str
+) -> None:
+    with pytest.raises(TypeError, match=entry_point):
+        socket_class()
