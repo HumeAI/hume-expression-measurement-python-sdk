@@ -753,6 +753,33 @@ async def test_the_attempt_count_starts_again_only_once_a_connection_has_stayed_
             assert _close_code(await _stopped(reader, server, requests=2)) == 1012
 
 
+@pytest.mark.parametrize(
+    ("end", "code"),
+    [
+        pytest.param(
+            lambda session: session.end_with_reason("server_shutdown"),
+            1000,
+            id="session.closed with reason server_shutdown and close code 1000",
+        ),
+        pytest.param(lambda session: session.close(1001), 1001, id="close code 1001"),
+    ],
+)
+async def test_raises_when_the_attempts_run_out_even_if_the_last_close_was_normal(
+    kind: _Kind, monkeypatch: pytest.MonkeyPatch, end: _End, code: int
+) -> None:
+    monkeypatch.setattr(_policy, "_MAX_ATTEMPTS", 1)
+    server = _FakeServer("audio")
+    async with _serving(server) as port, _connect_audio(kind, port) as socket:
+        reader = _Reader(socket)
+        await _until(lambda: reader.session_ids() == ["session-1"])
+        await end(server.sessions[0])
+        await _until(lambda: reader.session_ids() == ["session-1", "session-2"])
+
+        await end(server.sessions[1])
+
+        assert _close_code(await _stopped(reader, server, requests=2)) == code
+
+
 async def test_each_attempt_waits_1_3_times_as_long_as_the_one_before_up_to_the_maximum(
     kind: _Kind,
     monkeypatch: pytest.MonkeyPatch,

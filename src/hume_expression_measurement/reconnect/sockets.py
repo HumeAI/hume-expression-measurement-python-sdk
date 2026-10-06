@@ -16,7 +16,7 @@ from ..types.video_session_update import VideoSessionUpdate
 from ..video.client import AsyncVideoClient, VideoClient
 from ..video.socket_client import AsyncVideoSocketClient, VideoSocketClient, VideoSocketClientResponse
 from ._policy import Attempts, Endpoint, Session, is_retryable
-from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK
 
 _SocketT = typing.TypeVar("_SocketT")
 _ResponseT = typing.TypeVar("_ResponseT")
@@ -95,7 +95,8 @@ class _AsyncReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _Up
     async def _reconnect(self, closed: ConnectionClosed) -> bool:
         """
         Opens a new session if one can follow the session that ended, and returns whether it did.
-        Raises the last attempt's error when no attempts are left.
+        Raises when no attempts are left: the last attempt's error, or, if that attempt connected,
+        a `ConnectionClosedError` for the close that ended its session.
         """
         if self._ended.is_set() or not self._session.should_reconnect(closed):
             return False
@@ -104,9 +105,12 @@ class _AsyncReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _Up
         while True:
             delay = self._attempts.next_delay()
             if delay is None:
-                if failure is None:
-                    return False
-                raise failure
+                if failure is not None:
+                    raise failure
+                # The last attempt connected, and its session ended before the count started
+                # again. An error even after a normal close, so that iteration does not end as
+                # though the session had finished.
+                raise ConnectionClosedError(closed.rcvd, closed.sent, closed.rcvd_then_sent)
             if await self._ends_within(delay):
                 return False
             try:
@@ -304,7 +308,8 @@ class _ReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _UpdateT
     def _reconnect(self, closed: ConnectionClosed) -> bool:
         """
         Opens a new session if one can follow the session that ended, and returns whether it did.
-        Raises the last attempt's error when no attempts are left.
+        Raises when no attempts are left: the last attempt's error, or, if that attempt connected,
+        a `ConnectionClosedError` for the close that ended its session.
         """
         if self._ended.is_set() or not self._session.should_reconnect(closed):
             return False
@@ -313,9 +318,12 @@ class _ReconnectingSocket(abc.ABC, typing.Generic[_SocketT, _ResponseT, _UpdateT
         while True:
             delay = self._attempts.next_delay()
             if delay is None:
-                if failure is None:
-                    return False
-                raise failure
+                if failure is not None:
+                    raise failure
+                # The last attempt connected, and its session ended before the count started
+                # again. An error even after a normal close, so that iteration does not end as
+                # though the session had finished.
+                raise ConnectionClosedError(closed.rcvd, closed.sent, closed.rcvd_then_sent)
             if self._ended.wait(delay):
                 return False
             try:
@@ -562,8 +570,9 @@ def reconnecting(
     ended for good, iteration ends after a normal close and otherwise raises
     `websockets.exceptions.ConnectionClosed`, as the socket from `connect()` does, and `recv()`
     raises it. When the server refuses a reconnect with a 4xx status other than 408 or 429, they
-    raise the error that `connect()` raised for it at once, and when 30 attempts in a row have
-    failed, they raise the last attempt's error.
+    raise the error that `connect()` raised for it at once. When the 30 attempts run out, they
+    raise the last attempt's error, or, if that attempt connected but closed again within 5
+    seconds, a `websockets.exceptions.ConnectionClosedError` for that close, even a normal one.
 
     Examples
     --------
