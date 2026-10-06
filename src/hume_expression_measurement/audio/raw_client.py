@@ -17,7 +17,7 @@ from ..core.pydantic_utilities import parse_obj_as
 from ..core.query_encoder import encode_query
 from ..core.remove_none_from_dict import remove_none_from_dict
 from ..core.request_options import RequestOptions
-from ..core.websocket_compat import InvalidWebSocketStatus, get_response_headers, get_status_code
+from ..core.websocket_compat import InvalidWebSocketStatus, get_status_code
 from ..errors.bad_request_error import BadRequestError
 from ..errors.content_too_large_error import ContentTooLargeError
 from ..errors.forbidden_error import ForbiddenError
@@ -32,7 +32,6 @@ from ..types.authentication_error import AuthenticationError
 from ..types.error_body import ErrorBody
 from .socket_client import AsyncAudioSocketClient, AudioSocketClient
 from pydantic import ValidationError
-from websockets.exceptions import InvalidStatus
 
 try:
     from websockets.legacy.client import connect as websockets_client_connect  # type: ignore
@@ -299,17 +298,17 @@ class RawAudioClient:
         try:
             with websockets_sync_client.connect(ws_url, additional_headers=headers) as protocol:
                 yield AudioSocketClient(websocket=protocol)
-        except InvalidStatus as exc:
-            status_code: int = exc.response.status_code
+        except InvalidWebSocketStatus as exc:
+            status_code: int = get_status_code(exc)
             if status_code == 401:
                 raise ApiError(
                     status_code=status_code,
-                    headers=get_response_headers(exc),
+                    headers=dict(headers),
                     body="Websocket initialized with invalid credentials.",
                 )
             raise ApiError(
                 status_code=status_code,
-                headers=get_response_headers(exc),
+                headers=dict(headers),
                 body="Unexpected error when initializing websocket connection.",
             )
 
@@ -577,11 +576,11 @@ class AsyncRawAudioClient:
             if status_code == 401:
                 raise ApiError(
                     status_code=status_code,
-                    headers=get_response_headers(exc),
+                    headers=dict(headers),
                     body="Websocket initialized with invalid credentials.",
                 )
             raise ApiError(
                 status_code=status_code,
-                headers=get_response_headers(exc),
+                headers=dict(headers),
                 body="Unexpected error when initializing websocket connection.",
             )
