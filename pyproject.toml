@@ -6,7 +6,7 @@ license-files = ["LICENSE"]
 
 [tool.poetry]
 name = "hume-expression-measurement"
-version = "0.0.146"
+version = "0.0.148"
 description = "A Python SDK for the Hume Expression Measurement API"
 readme = "README.md"
 authors = []
@@ -34,7 +34,7 @@ packages = [
 ]
 
 [tool.poetry.urls]
-Documentation = 'https://hume-expression-measurement.docs.buildwithfern.com'
+Documentation = 'https://dev.hume.ai/expression-measurement/docs/overview'
 Homepage = 'https://www.hume.ai/'
 Repository = 'https://github.com/HumeAI/hume-expression-measurement-python-sdk'
 
