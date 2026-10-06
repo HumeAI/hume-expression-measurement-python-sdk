@@ -251,7 +251,7 @@ async def test_a_recording_slows_to_a_server_rate_lower_than_documented_rather_t
         replies = await _collect(stream_video(socket, _frames_of(*frames)))
 
         assert replies == [f"{frame.timestamp_ms:g} result" for frame in frames]
-        # A client that kept sending at 3 frames per second would send about 14 frames, 8 of them
+        # A client that kept sending at 3 frames per second would send about 13 frames, 7 of them
         # only to be rejected. One that slows down sends about 9.
         assert len(server.received) <= 6 + 5
 
@@ -262,8 +262,8 @@ async def test_live_frames_are_dropped_before_sending_when_the_server_rate_is_lo
 
         replies = await _collect(stream)
 
-        # A client that kept sending at 3 frames per second would have about 6 frames rejected and
-        # drop about 52. One that slows down has about 2 rejected and drops about 57.
+        # A client that kept sending at 3 frames per second would have about 5 frames rejected and
+        # drop about 53. One that slows down has about 2 rejected and drops about 56.
         assert len([reply for reply in replies if reply.endswith("rate_limited")]) < 4
         assert stream.dropped_frames > 54
 
@@ -475,7 +475,7 @@ async def test_an_error_from_the_frames_is_raised_unchanged_and_the_session_is_c
         await _until(lambda: server.close_codes == [1000])
 
 
-# Runs on the real clock: the 10 frames are pulled and sent in under a millisecond, and a 3rd
+# Runs on the real clock: the 10 frames are pulled and sent in under a millisecond, and a 2nd
 # frame needs a third of a second of allowance.
 async def test_live_frames_that_arrive_with_no_send_allowance_left_are_dropped() -> None:
     async with _connect(lambda frame_id, attempt: [_RESULT]) as (socket, server):
@@ -483,22 +483,38 @@ async def test_live_frames_that_arrive_with_no_send_allowance_left_are_dropped()
 
         replies = await _collect(stream)
 
-        assert len(replies) == 2
-        assert stream.dropped_frames == 8
-        assert server.received == [0, 1]
+        assert len(replies) == 1
+        assert stream.dropped_frames == 9
+        assert server.received == [0]
 
 
-async def test_the_first_2_recorded_frames_are_sent_at_once_and_the_rest_at_3_per_second() -> None:
+async def test_after_a_pause_2_live_frames_are_sent_at_once_and_a_3rd_is_dropped() -> None:
+    async def frames() -> typing.AsyncIterator[VideoFrame]:
+        yield _frame(0)
+        await asyncio.sleep(1)
+        for frame_id in range(1, 4):
+            yield _frame(frame_id)
+
+    async with _connect(lambda frame_id, attempt: [_RESULT]) as (socket, server):
+        stream = stream_video(socket, frames(), live=True)
+
+        replies = await _collect(stream)
+
+        assert replies == ["0 result", "100 result", "200 result"]
+        assert stream.dropped_frames == 1
+        assert server.received == [0, 1, 2]
+
+
+async def test_recorded_frames_are_sent_at_3_per_second_from_the_first() -> None:
     async with _connect(lambda frame_id, attempt: [_RESULT]) as (socket, server):
         started = time.monotonic()
         replies = await _collect(stream_video(socket, _frames_of(*(_frame(frame_id) for frame_id in range(4)))))
 
         assert len(replies) == 4
-        assert server.arrivals[1] - server.arrivals[0] < 0.1
-        # The 2 frames after the first 2 need two thirds of a second of allowance. That time is
-        # measured from before iteration, when the allowance starts, because a busy machine can
+        # Measured from before iteration, when the allowance starts, because a busy machine can
         # delay the first frame's arrival.
-        assert server.arrivals[3] - started >= 0.66
+        assert server.arrivals[1] - started >= 0.33
+        assert server.arrivals[3] - started >= 0.99
 
 
 async def test_frames_keep_being_paced_when_the_system_clock_is_set_back(monkeypatch: pytest.MonkeyPatch) -> None:

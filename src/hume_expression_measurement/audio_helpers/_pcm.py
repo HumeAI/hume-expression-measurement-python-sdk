@@ -6,7 +6,7 @@ import typing
 SAMPLE_RATE = 16000
 BYTES_PER_MS = SAMPLE_RATE * 2 // 1000
 
-# The realtime voice endpoint rejects a frame holding more than 10 seconds of audio.
+# The realtime audio endpoint rejects a frame holding more than 10 seconds of audio.
 MAX_FRAME_MS = 10_000
 
 # Below this rate soxr returns its output in bursts, so a small WAV file declaring a rate of 1 Hz

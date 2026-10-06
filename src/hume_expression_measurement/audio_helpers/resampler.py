@@ -34,7 +34,7 @@ class _Soxr(typing.Protocol):
 class Resampler:
     """
     Converts PCM audio at any sample rate from 1 kHz and any channel count to the format the
-    realtime voice endpoint accepts: signed 16-bit little-endian PCM, mono, 16 kHz.
+    realtime audio endpoint accepts: signed 16-bit little-endian PCM, mono, 16 kHz.
 
     Pass successive blocks of one stream to `process`, then call `flush` once after the last
     block. Filter state carries over between calls, so a stream converts to the same bytes
@@ -111,7 +111,7 @@ class Resampler:
             history, up to about 120 ms at input rates of 8 kHz and above and up to about 1 second
             at lower rates, so the result can be shorter than the input or empty. At 8 kHz, the
             first 100 ms block returns nothing.
-            The realtime voice endpoint rejects empty frames and frames longer than 10 seconds,
+            The realtime audio endpoint rejects empty frames and frames longer than 10 seconds,
             so check the result before sending it, and pass a long recording in blocks of about
             100 ms rather than in one call. Stream the audio in close to real time, no faster
             than 1 second of audio per second.

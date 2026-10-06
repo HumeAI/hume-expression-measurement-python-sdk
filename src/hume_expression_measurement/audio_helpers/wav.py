@@ -50,7 +50,7 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
     ends partway through one, and to the end of the file if its header still declares an empty
     file, as libsndfile leaves a recording it never closed.
 
-    Frames are produced as fast as the file can be read. Stream them to the realtime voice endpoint
+    Frames are produced as fast as the file can be read. Stream them to the realtime audio endpoint
     in close to real time, no faster than 1 second of audio per second, by waiting each frame's
     length between sends.
 
