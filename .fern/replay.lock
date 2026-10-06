@@ -96,14 +96,20 @@ generations:
     cli_version: unknown
     generator_versions:
       fernapi/fern-python-sdk: 5.33.1
-current_generation: 3429c7b7ce7787e6e1f6f3520d5f4ed8838417df
+  - commit_sha: 151e20de5f14a496ae7e1527717f1030cc31c036
+    tree_hash: c95fd37227c49702bb96dfca04c223a2432cb228
+    timestamp: 2026-10-06T08:40:26.999Z
+    cli_version: unknown
+    generator_versions:
+      fernapi/fern-python-sdk: 5.33.1
+current_generation: 151e20de5f14a496ae7e1527717f1030cc31c036
 patches:
   - id: patch-6cd46075
     content_hash: sha256:66cb4b7e729f92c8c1060c1a31f3a832758c176793be9249342f80ceb7d1f8a2
     original_commit: 6cd4607592b7d68bfde2297caf9edc41ef984415
     original_message: read the error of a reconnect task that no receive waits on so asyncio does not report it as never retrieved, build the reconnecting sockets through a _create classmethod, and correct the stream_video guard comment, the construction error message and the iteration wording
     original_author: zach <zachary.greathouse@hume.ai>
-    base_generation: 3429c7b7ce7787e6e1f6f3520d5f4ed8838417df
+    base_generation: 151e20de5f14a496ae7e1527717f1030cc31c036
     files:
       - src/hume_expression_measurement/core/websocket_compat.py
     patch_content: |
@@ -164,3 +170,4 @@ patches:
             # Matches the headers of an HTTP ApiError, which httpx gives with lowercase names and a
             # repeated header's values joined.
             return {name: ", ".join(headers.get_all(name)) for name in headers}
+    user_owned: true
