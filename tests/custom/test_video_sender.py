@@ -256,6 +256,21 @@ async def test_a_recording_slows_to_a_server_rate_lower_than_documented_rather_t
         assert len(server.received) <= 6 + 5
 
 
+async def test_a_recording_returns_to_3_frames_per_second_once_its_frames_are_accepted_again() -> None:
+    respond: _Respond = lambda frame_id, attempt: (
+        [_error("rate_limited")] if frame_id == 1 and attempt == 1 else [_RESULT]
+    )
+    async with _connect(respond) as (socket, server):
+        frames = [_frame(frame_id) for frame_id in range(10)]
+
+        replies = await _collect(stream_video(socket, _frames_of(*frames)))
+
+        assert replies == [f"{frame.timestamp_ms:g} result" for frame in frames]
+        # The rejection halves the rate to 1.5 frames per second, and the next few accepted frames
+        # raise it back to 3, so the last 3 frames take about a second. At 1.5 they would take 2.
+        assert server.arrivals[-1] - server.arrivals[-4] < 1.5
+
+
 async def test_live_frames_are_dropped_before_sending_when_the_server_rate_is_lower_than_documented() -> None:
     async with _connect(_limited_to(1, 1)) as (socket, _):
         stream = stream_video(socket, _live_frames(60, 0.033), live=True)
@@ -503,6 +518,26 @@ async def test_after_a_pause_2_live_frames_are_sent_at_once_and_a_3rd_is_dropped
         assert replies == ["0 result", "100 result", "200 result"]
         assert stream.dropped_frames == 1
         assert server.received == [0, 1, 2]
+
+
+async def test_once_slowed_2_live_frames_that_arrive_together_after_a_pause_are_not_both_sent() -> None:
+    async def frames() -> typing.AsyncIterator[VideoFrame]:
+        yield _frame(0)
+        await asyncio.sleep(2)
+        yield _frame(1)
+        yield _frame(2)
+
+    respond: _Respond = lambda frame_id, attempt: [_error("rate_limited")] if frame_id == 0 else [_RESULT]
+    async with _connect(respond) as (socket, server):
+        stream = stream_video(socket, frames(), live=True)
+
+        replies = await _collect(stream)
+
+        # The rejection halves the rate to 1.5 frames per second, so the pause leaves allowance for
+        # 1.5 frames rather than 2.
+        assert replies == ["0 rate_limited", "100 result"]
+        assert stream.dropped_frames == 1
+        assert server.received == [0, 1]
 
 
 async def test_recorded_frames_are_sent_at_3_per_second_from_the_first() -> None:
