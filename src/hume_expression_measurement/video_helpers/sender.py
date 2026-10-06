@@ -60,7 +60,7 @@ class VideoResultReply:
     """The frame's `timestamp_ms`."""
 
     result: VideoMeasurementResult
-    """Expression measurements for every face in the frame."""
+    """The `measurement.result` for the frame, listing up to 32 detected faces."""
 
     error: None = None
     """Always None, so that any reply's `error` can be checked."""
