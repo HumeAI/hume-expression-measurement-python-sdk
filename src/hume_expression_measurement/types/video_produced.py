@@ -13,7 +13,7 @@ class VideoProduced(UniversalBaseModel):
 
     measurements: int = pydantic.Field()
     """
-    Number of faces measured across all frames: a frame with two faces counts as two, and a frame with none counts as zero. This counts faces; the audio endpoint's field of the same name counts messages.
+    Number of faces measured across all frames: a frame with two measured faces counts as two, and a frame with none counts as zero. A face listed without measurements is not counted. This counts faces; the audio endpoint's field of the same name counts messages.
     """
 
     if IS_PYDANTIC_V2:

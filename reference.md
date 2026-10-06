@@ -120,11 +120,12 @@ Send one or more images, each as a `file` part, and, to change the defaults, set
 
 ## Detection and measurement
 
-The server detects the faces in each image and measures up to 64 of them, most confident first, listed in `faces` in that order.
+The server detects the faces in each image and lists them in `faces`. It measures the largest of them, up to the limit below, and lists those first, largest first.
 
-- A face is skipped, and does not count toward the 64, if its detection confidence is below `face.threshold` or its bounding box is under `face.min_size` pixels on its shorter side.
+- A face is skipped, and is not listed, if its detection confidence is below `face.threshold` or its bounding box is under `face.min_size` pixels on its shorter side.
 - Each measured face carries its bounding box, its detection confidence, a `face_id`, and two sets of scores: `expressions` for emotional expressions such as amusement or interest, and `descriptions` for visible facial actions such as a smile or a jaw drop.
-- `face_id` tracks a face across the images of one request. A face normally keeps its ID while it stays in view, and may get a new one if it leaves and returns. IDs do not identify a person.
+- The faces that were not measured follow, most confident first, up to 32 faces in all. Each carries its bounding box and detection confidence, with `face_id`, `expressions` and `descriptions` null.
+- `face_id` tracks a face across the images of one request. A face normally keeps its ID while it is measured, and can get it back after it leaves the view or is no longer among the largest faces. IDs do not identify a person.
 - **Across requests:** IDs start again from 0 in every request. To keep them consistent, set `return_face_state` and pass the returned `face_state` as `face_state` in the next request.
 
 ## Limits
@@ -134,7 +135,8 @@ The server detects the faces in each image and measures up to 64 of them, most c
 | Request size | 25MB, the whole multipart body |
 | Image size | 2MB |
 | Pixels per image | 8,294,400 (the area of a 3840x2160 image) |
-| Faces measured per image | 64 |
+| Faces measured per image | 2 by default, the largest; contact support to raise it |
+| Faces listed per image | 32 |
 
 Every image is checked before any is measured. One bad image fails the whole request, which then returns no results:
 

@@ -21,7 +21,7 @@ class VideoMeasurementResult(UniversalBaseModel):
 
     faces: typing.List[Face] = pydantic.Field()
     """
-    The faces detected in the frame, in descending order of confidence.
+    The faces detected in the frame: the measured faces first, largest first, then the faces that were not measured, in descending order of confidence.
     """
 
     if IS_PYDANTIC_V2:
