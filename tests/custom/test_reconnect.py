@@ -469,10 +469,11 @@ async def test_an_error_from_a_reconnect_that_no_receive_waits_on_is_not_reporte
             with pytest.raises(asyncio.TimeoutError):
                 await asyncio.wait_for(socket.recv(), 0.2)
             assert len(server.requests) == 2
+        # The refusal ends the reconnect, which is one of these.
+        running = asyncio.all_tasks() - {asyncio.current_task()}
         release.set()
-        # The refusal ends the reconnect, the only other task left.
-        await _until(lambda: asyncio.all_tasks() == {asyncio.current_task()})
-    del socket
+        await _until(lambda: all(task.done() for task in running))
+    del socket, running
     # Collects the reconnect task, which asyncio reports if no one read its error.
     gc.collect()
 
