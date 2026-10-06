@@ -108,14 +108,20 @@ generations:
     cli_version: unknown
     generator_versions:
       fernapi/fern-python-sdk: 5.33.1
-current_generation: 7648c6bc7efd08083c34feae2d203f7c98eaba58
+  - commit_sha: 759c22b60cf5bd50f373e7f2582d126791f96937
+    tree_hash: 6c10f226246ef00b830956704a466c0153c3b975
+    timestamp: 2026-10-06T12:31:34.336Z
+    cli_version: unknown
+    generator_versions:
+      fernapi/fern-python-sdk: 5.33.1
+current_generation: 759c22b60cf5bd50f373e7f2582d126791f96937
 patches:
   - id: patch-6cd46075
     content_hash: sha256:66cb4b7e729f92c8c1060c1a31f3a832758c176793be9249342f80ceb7d1f8a2
     original_commit: 6cd4607592b7d68bfde2297caf9edc41ef984415
     original_message: read the error of a reconnect task that no receive waits on so asyncio does not report it as never retrieved, build the reconnecting sockets through a _create classmethod, and correct the stream_video guard comment, the construction error message and the iteration wording
     original_author: zach <zachary.greathouse@hume.ai>
-    base_generation: 7648c6bc7efd08083c34feae2d203f7c98eaba58
+    base_generation: 759c22b60cf5bd50f373e7f2582d126791f96937
     files:
       - src/hume_expression_measurement/core/websocket_compat.py
     patch_content: |
@@ -177,3 +183,149 @@ patches:
             # repeated header's values joined.
             return {name: ", ".join(headers.get_all(name)) for name in headers}
     user_owned: true
+  - id: patch-dac996b5
+    content_hash: sha256:f18f1d2b76990c3a1d2db876b3054cf841a4de1ab09c076df880cf99949f7ed5
+    original_commit: dac996b5970f7401f21b870da49b8076c87fcf1b
+    original_message: Pace realtime streaming at the documented send rates (#35)
+    original_author: Zachary Greathouse <26175515+zgreathouse@users.noreply.github.com>
+    base_generation: 759c22b60cf5bd50f373e7f2582d126791f96937
+    files:
+      - .github/workflows/ci.yml
+    patch_content: |
+      diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+      index c4affd8..f3f5c52 100644
+      --- a/.github/workflows/ci.yml
+      +++ b/.github/workflows/ci.yml
+      @@ -73,7 +73,9 @@ jobs:
+         publish:
+           name: Publish to PyPI
+           needs: [compile, test, build]
+      -    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+      +    # Only version tags publish. Fern pushes a tag of its own to this repository, and that tag must
+      +    # not release the package.
+      +    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+           runs-on: ubuntu-latest
+           environment:
+             name: pypi
+      @@ -87,6 +89,15 @@ jobs:
+               with:
+                 name: python-package-distributions
+                 path: dist/
+      +      # A published version can never be published again, so a tag on the wrong commit must fail
+      +      # here rather than release whatever version that commit holds.
+      +      - name: Check the tag matches the package version
+      +        run: |
+      +          PKG_VERSION=$(basename dist/*.whl | cut -d- -f2)
+      +          if [[ "${GITHUB_REF_NAME}" != "v${PKG_VERSION}" ]]; then
+      +            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${PKG_VERSION}."
+      +            exit 1
+      +          fi
+             - name: Publish to pypi with attestations
+               uses: pypa/gh-action-pypi-publish@release/v1
+               with:
+    theirs_snapshot:
+      .github/workflows/ci.yml: |
+        name: ci
+
+        on: [push]
+
+        concurrency:
+          group: ${{ github.workflow }}-${{ github.ref }}
+          cancel-in-progress: false
+
+        jobs:
+          compile:
+            runs-on: ubuntu-latest
+            steps:
+              - name: Checkout repo
+                uses: actions/checkout@v4
+              - name: Set up python
+                uses: actions/setup-python@v4
+                with:
+                  python-version: "3.10"
+              - name: Bootstrap poetry
+                run: |
+                  curl -sSL https://install.python-poetry.org | python - -y --version 1.5.1
+              - name: Install dependencies
+                run: poetry install
+              - name: Compile
+                run: poetry run mypy .
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - name: Checkout repo
+                uses: actions/checkout@v4
+              - name: Set up python
+                uses: actions/setup-python@v4
+                with:
+                  python-version: "3.10"
+              - name: Bootstrap poetry
+                run: |
+                  curl -sSL https://install.python-poetry.org | python - -y --version 1.5.1
+              - name: Install dependencies
+                run: poetry install
+
+              - name: Test
+                run: poetry run pytest -rP -n auto .
+
+              - name: Install aiohttp extra
+                run: poetry install --extras aiohttp
+
+              - name: Test (aiohttp)
+                run: poetry run pytest -rP -n auto -m aiohttp .
+
+          build:
+            name: Build distribution
+            runs-on: ubuntu-latest
+            steps:
+              - name: Checkout repo
+                uses: actions/checkout@v4
+              - name: Set up python
+                uses: actions/setup-python@v4
+                with:
+                  python-version: "3.10"
+              - name: Bootstrap poetry
+                run: |
+                  curl -sSL https://install.python-poetry.org | python - -y --version 1.5.1
+              - name: Install dependencies
+                run: poetry install
+              - name: Build package
+                run: poetry build
+              - name: Store the distribution packages
+                uses: actions/upload-artifact@v4
+                with:
+                  name: python-package-distributions
+                  path: dist/
+
+          publish:
+            name: Publish to PyPI
+            needs: [compile, test, build]
+            # Only version tags publish. Fern pushes a tag of its own to this repository, and that tag must
+            # not release the package.
+            if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+            runs-on: ubuntu-latest
+            environment:
+              name: pypi
+              url: https://pypi.org/p/hume-expression-measurement
+            permissions:
+              contents: read   # Required for checkout
+              id-token: write  # Required for OIDC
+            steps:
+              - name: Download all the dists
+                uses: actions/download-artifact@v4
+                with:
+                  name: python-package-distributions
+                  path: dist/
+              # A published version can never be published again, so a tag on the wrong commit must fail
+              # here rather than release whatever version that commit holds.
+              - name: Check the tag matches the package version
+                run: |
+                  PKG_VERSION=$(basename dist/*.whl | cut -d- -f2)
+                  if [[ "${GITHUB_REF_NAME}" != "v${PKG_VERSION}" ]]; then
+                    echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${PKG_VERSION}."
+                    exit 1
+                  fi
+              - name: Publish to pypi with attestations
+                uses: pypa/gh-action-pypi-publish@release/v1
+                with:
+                  repository-url: https://upload.pypi.org/legacy/
