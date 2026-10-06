@@ -23,6 +23,7 @@ from ..errors.content_too_large_error import ContentTooLargeError
 from ..errors.forbidden_error import ForbiddenError
 from ..errors.internal_server_error import InternalServerError
 from ..errors.method_not_allowed_error import MethodNotAllowedError
+from ..errors.service_unavailable_error import ServiceUnavailableError
 from ..errors.unauthorized_error import UnauthorizedError
 from ..errors.unsupported_media_type_error import UnsupportedMediaTypeError
 from ..types.audio_file_config import AudioFileConfig
@@ -197,6 +198,17 @@ class RawAudioClient:
                         ),
                     ),
                 )
+            if _response.status_code == 503:
+                raise ServiceUnavailableError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
             _response_json = _response.json()
         except JSONDecodeError:
             raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response.text)
@@ -216,8 +228,8 @@ class RawAudioClient:
         Send audio as binary messages of signed 16-bit little-endian PCM, mono, 16 kHz, with no header. Frames of around 100 ms work well. You can cut the audio at any sample boundary; the server joins the frames into one continuous stream.
 
         - **Configuration:** send `session.update` before your first audio frame. A `session.update` after your first audio frame ends the session with `config_invalid`.
-        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. Accepted frames are not acknowledged.
-        - **Send rate:** you can send faster than real time. The server accepts the first 30 seconds of audio immediately, then 2 seconds of audio per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous.
+        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. A message over 1MiB ends the session with `message_too_large`. Accepted frames are not acknowledged.
+        - **Send rate:** stream audio in close to real time, no faster than 1 second of audio per second. A frame sent faster can get `rate_limited`, and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous. To measure a recording faster than it plays, use the audio file endpoint.
         - **Failures:** if measurement fails, you receive `internal_error` and the session ends. Open a new connection.
 
         ## How measurements are produced
@@ -234,7 +246,8 @@ class RawAudioClient:
         | Limit | Value |
         |---|---|
         | Audio per frame | 10 seconds (320KB) |
-        | Send rate | 30 seconds of audio immediately, then 2 seconds of audio per second |
+        | Message size | 1MiB (1,048,576 bytes) |
+        | Send rate | 1 second of audio per second |
 
         ## Message flow
 
@@ -456,6 +469,17 @@ class AsyncRawAudioClient:
                         ),
                     ),
                 )
+            if _response.status_code == 503:
+                raise ServiceUnavailableError(
+                    headers=dict(_response.headers),
+                    body=typing.cast(
+                        ErrorBody,
+                        parse_obj_as(
+                            type_=ErrorBody,  # type: ignore
+                            object_=_response.json(),
+                        ),
+                    ),
+                )
             _response_json = _response.json()
         except JSONDecodeError:
             raise ApiError(status_code=_response.status_code, headers=dict(_response.headers), body=_response.text)
@@ -477,8 +501,8 @@ class AsyncRawAudioClient:
         Send audio as binary messages of signed 16-bit little-endian PCM, mono, 16 kHz, with no header. Frames of around 100 ms work well. You can cut the audio at any sample boundary; the server joins the frames into one continuous stream.
 
         - **Configuration:** send `session.update` before your first audio frame. A `session.update` after your first audio frame ends the session with `config_invalid`.
-        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. Accepted frames are not acknowledged.
-        - **Send rate:** you can send faster than real time. The server accepts the first 30 seconds of audio immediately, then 2 seconds of audio per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous.
+        - **Rejected frames:** a frame that is empty, has an odd number of bytes, or holds more than 10 seconds of audio gets `invalid_audio_frame`, and the session continues. A message over 1MiB ends the session with `message_too_large`. Accepted frames are not acknowledged.
+        - **Send rate:** stream audio in close to real time, no faster than 1 second of audio per second. A frame sent faster can get `rate_limited`, and none of its audio is measured. Wait briefly and resend the same frame, so that the stream stays continuous. To measure a recording faster than it plays, use the audio file endpoint.
         - **Failures:** if measurement fails, you receive `internal_error` and the session ends. Open a new connection.
 
         ## How measurements are produced
@@ -495,7 +519,8 @@ class AsyncRawAudioClient:
         | Limit | Value |
         |---|---|
         | Audio per frame | 10 seconds (320KB) |
-        | Send rate | 30 seconds of audio immediately, then 2 seconds of audio per second |
+        | Message size | 1MiB (1,048,576 bytes) |
+        | Send rate | 1 second of audio per second |
 
         ## Message flow
 

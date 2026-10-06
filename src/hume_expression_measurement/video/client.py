@@ -117,7 +117,7 @@ class VideoClient:
 
         - **Configuration:** send `session.update` before your first frame. A `session.update` after your first frame ends the session with `config_invalid`.
         - **Rejected frames:** a frame that is empty, is not a JPEG, or is over the pixel limit gets `invalid_image_frame`. A frame over 2MB ends the session with `message_too_large`.
-        - **Send rate:** the server accepts the first 8 frames immediately, then 4 per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and resend it.
+        - **Send rate:** send frames as they are captured or played, up to 3 per second. A frame sent faster can get `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and resend it. To measure a recorded video faster than it plays, send its frames to the video file endpoint.
         - **Under load:** replies slow down; a frame within the send rate is never rejected because the server is busy.
         - **Failures:** a frame whose measurement fails gets `internal_error`; resend it if you need its result. Five failures in a row end the session.
 
@@ -146,7 +146,7 @@ class VideoClient:
         |---|---|
         | Message size | 2MB |
         | Pixels per frame | 8,294,400 (the area of a 3840x2160 image) |
-        | Send rate | 8 frames immediately, then 4 frames per second |
+        | Send rate | 3 frames per second |
         | Faces measured per frame | 2 by default, the largest; contact support to raise it |
         | Faces listed per frame | 32 |
         | Consecutive measurement failures | 5, after which the session ends |
@@ -316,7 +316,7 @@ class AsyncVideoClient:
 
         - **Configuration:** send `session.update` before your first frame. A `session.update` after your first frame ends the session with `config_invalid`.
         - **Rejected frames:** a frame that is empty, is not a JPEG, or is over the pixel limit gets `invalid_image_frame`. A frame over 2MB ends the session with `message_too_large`.
-        - **Send rate:** the server accepts the first 8 frames immediately, then 4 per second, and unused allowance builds up while you pause. A frame over the limit gets `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and resend it.
+        - **Send rate:** send frames as they are captured or played, up to 3 per second. A frame sent faster can get `rate_limited` and is not measured. From a live camera, drop it and send the next frame; from a recording, wait briefly and resend it. To measure a recorded video faster than it plays, send its frames to the video file endpoint.
         - **Under load:** replies slow down; a frame within the send rate is never rejected because the server is busy.
         - **Failures:** a frame whose measurement fails gets `internal_error`; resend it if you need its result. Five failures in a row end the session.
 
@@ -345,7 +345,7 @@ class AsyncVideoClient:
         |---|---|
         | Message size | 2MB |
         | Pixels per frame | 8,294,400 (the area of a 3840x2160 image) |
-        | Send rate | 8 frames immediately, then 4 frames per second |
+        | Send rate | 3 frames per second |
         | Faces measured per frame | 2 by default, the largest; contact support to raise it |
         | Faces listed per frame | 32 |
         | Consecutive measurement failures | 5, after which the session ends |
