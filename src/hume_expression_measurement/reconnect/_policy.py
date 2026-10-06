@@ -9,7 +9,7 @@ from ..core.api_error import ApiError
 from ..types.audio_session_closed import AudioSessionClosed
 from ..types.error import Error
 from ..types.video_session_closed import VideoSessionClosed
-from websockets.exceptions import ConnectionClosed, InvalidStatus, WebSocketException
+from websockets.exceptions import ConnectionClosed, WebSocketException
 
 Endpoint = typing.Literal["audio", "video"]
 
@@ -67,20 +67,10 @@ class Session:
 
 def is_retryable(error: Exception) -> bool:
     """Whether a connection attempt that failed with `error` can succeed if it is made again."""
-    status = _refused_status(error)
-    if status is not None:
-        return not 400 <= status < 500 or status in _RETRYABLE_STATUSES
+    if isinstance(error, ApiError) and error.status_code is not None:
+        return not 400 <= error.status_code < 500 or error.status_code in _RETRYABLE_STATUSES
     # Before Python 3.11, asyncio's timeout error is not an OSError.
     return isinstance(error, (OSError, asyncio.TimeoutError, WebSocketException))
-
-
-def _refused_status(error: Exception) -> typing.Optional[int]:
-    if isinstance(error, ApiError):
-        return error.status_code
-    # The sync client raises the websockets error for a refused handshake rather than an ApiError.
-    if isinstance(error, InvalidStatus):
-        return error.response.status_code
-    return None
 
 
 class Attempts:

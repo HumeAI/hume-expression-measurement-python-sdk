@@ -6,8 +6,9 @@ import time
 import typing
 
 import pytest
+from typing_extensions import assert_type
 from websockets.asyncio.server import ServerConnection, serve
-from websockets.exceptions import ConnectionClosed, ConnectionClosedError, InvalidStatus
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 from websockets.http11 import Request, Response
 
 from hume_expression_measurement import (
@@ -34,6 +35,8 @@ from hume_expression_measurement.reconnect import (
 
 # Every wait in these tests is bounded, so that a regression fails rather than hangs CI.
 _TIMEOUT = 10
+
+_API_KEY = "test-key"
 
 _Endpoint = typing.Literal["audio", "video"]
 _Kind = typing.Literal["async", "sync"]
@@ -132,7 +135,11 @@ class _FakeServer:
         if self._release is not None:
             await self._release.wait()
         if self._refusals:
-            return connection.respond(self._refusals.popleft(), "Refused by the test.\n")
+            response = connection.respond(self._refusals.popleft(), "Refused by the test.\n")
+            response.headers["Retry-After"] = "5"
+            response.headers["X-Repeated"] = "a"
+            response.headers["X-Repeated"] = "b"
+            return response
         return None
 
     async def handle(self, connection: ServerConnection) -> None:
@@ -154,8 +161,8 @@ async def _serving(server: _FakeServer, port: int = 0) -> typing.AsyncIterator[i
 def _client(kind: _Kind, port: int) -> typing.Union[AsyncExpressionMeasurementClient, ExpressionMeasurementClient]:
     environment = ExpressionMeasurementClientEnvironment(base="http://127.0.0.1", production=f"ws://127.0.0.1:{port}")
     if kind == "async":
-        return AsyncExpressionMeasurementClient(api_key="test-key", environment=environment)
-    return ExpressionMeasurementClient(api_key="test-key", environment=environment)
+        return AsyncExpressionMeasurementClient(api_key=_API_KEY, environment=environment)
+    return ExpressionMeasurementClient(api_key=_API_KEY, environment=environment)
 
 
 # The interface of the async sockets, which the sync ones are given below.
@@ -233,7 +240,7 @@ async def _connect_audio(
     kind: _Kind, port: int, request_options: typing.Optional[RequestOptions] = None
 ) -> typing.AsyncIterator[_AudioSocket]:
     manager = reconnecting(_client(kind, port).audio, request_options=request_options)
-    if kind == "async":
+    if isinstance(manager, contextlib.AbstractAsyncContextManager):
         async with manager as socket:
             yield socket
     else:
@@ -244,7 +251,7 @@ async def _connect_audio(
 @contextlib.asynccontextmanager
 async def _connect_video(kind: _Kind, port: int) -> typing.AsyncIterator[_VideoSocket]:
     manager = reconnecting(_client(kind, port).video)
-    if kind == "async":
+    if isinstance(manager, contextlib.AbstractAsyncContextManager):
         async with manager as socket:
             yield socket
     else:
@@ -252,15 +259,13 @@ async def _connect_video(kind: _Kind, port: int) -> typing.AsyncIterator[_VideoS
             yield _VideoInThreads(socket)
 
 
-# The async client raises an ApiError for a refused handshake, and the sync client the websockets
-# error, and a reconnecting socket raises what its client raises.
-def _refused_status(kind: _Kind, error: typing.Optional[BaseException]) -> int:
-    if kind == "async":
-        assert isinstance(error, ApiError), error
-        assert error.status_code is not None
-        return error.status_code
-    assert isinstance(error, InvalidStatus), error
-    return error.response.status_code
+# Both clients raise an ApiError for a refused handshake, and a reconnecting socket raises what its
+# client raises. The error's string form prints its headers, which must not include the API key.
+def _refused_status(error: typing.Optional[BaseException]) -> int:
+    assert isinstance(error, ApiError), error
+    assert _API_KEY not in str(error)
+    assert error.status_code is not None
+    return error.status_code
 
 
 # Iterates a socket in the background, as an app's receive loop does, since receiving is what
@@ -663,7 +668,7 @@ async def test_stops_when_the_server_refuses_a_reconnect_with(kind: _Kind, statu
 
         await server.sessions[0].close(1012)
 
-        assert _refused_status(kind, await _stopped(reader, server, requests=2)) == status
+        assert _refused_status(await _stopped(reader, server, requests=2)) == status
 
 
 @pytest.mark.parametrize("status", [408, 429, 500, 503])
@@ -700,11 +705,11 @@ async def test_does_not_retry_a_first_connection_the_server_refuses_with(kind: _
     server = _FakeServer("audio")
     server.refuse_next(status)
     async with _serving(server) as port:
-        with pytest.raises((ApiError, InvalidStatus)) as raised:
+        with pytest.raises(ApiError) as raised:
             async with _connect_audio(kind, port):
                 pass
 
-    assert _refused_status(kind, raised.value) == status
+    assert _refused_status(raised.value) == status
     assert len(server.requests) == 1
 
 
@@ -717,6 +722,34 @@ async def test_does_not_retry_a_first_connection_that_cannot_reach_the_server(ki
             pass
 
 
+# The generated `connect()` methods carry hand edits that Fern Replay re-applies after each
+# regeneration, so this fails if a regeneration drops one.
+@pytest.mark.parametrize("status", [401, 503])
+@pytest.mark.parametrize("raw", [pytest.param(False, id="connect"), pytest.param(True, id="with_raw_response")])
+@pytest.mark.parametrize("endpoint", ["audio", "video"])
+async def test_connect_raises_api_error_with_the_response_headers_for_a_refused_handshake(
+    kind: _Kind, endpoint: _Endpoint, raw: bool, status: int
+) -> None:
+    server = _FakeServer(endpoint)
+    server.refuse_next(status)
+    async with _serving(server) as port:
+        client = _client(kind, port)
+        resource = client.audio if endpoint == "audio" else client.video
+        manager = resource.with_raw_response.connect() if raw else resource.connect()
+        with pytest.raises(ApiError) as raised:
+            if isinstance(manager, contextlib.AbstractAsyncContextManager):
+                async with manager:
+                    pass
+            else:
+                async with _entered_in_thread(manager):
+                    pass
+
+    assert _refused_status(raised.value) == status
+    assert raised.value.headers is not None
+    assert raised.value.headers["retry-after"] == "5"
+    assert raised.value.headers["x-repeated"] == "a, b"
+
+
 async def test_gives_up_after_30_attempts_in_a_row_and_raises_the_last_error(kind: _Kind) -> None:
     server = _FakeServer("audio")
     async with _serving(server) as port, _connect_audio(kind, port) as socket:
@@ -727,7 +760,7 @@ async def test_gives_up_after_30_attempts_in_a_row_and_raises_the_last_error(kin
 
         await server.sessions[0].close(1012)
 
-        assert _refused_status(kind, await _stopped(reader, server, requests=31)) == 503
+        assert _refused_status(await _stopped(reader, server, requests=31)) == 503
 
 
 @pytest.mark.parametrize(
@@ -836,3 +869,15 @@ def test_constructing_a_socket_directly_points_to_reconnecting(
 ) -> None:
     with pytest.raises(TypeError, match=entry_point):
         socket_class()
+
+
+# Checked by mypy, which CI runs over the tests. Each socket type depends on the clients declaring
+# the types of their `audio` and `video` properties, which are generated code with hand edits.
+def test_reconnecting_gives_each_client_and_resource_its_socket_type() -> None:
+    client = ExpressionMeasurementClient(api_key=_API_KEY)
+    async_client = AsyncExpressionMeasurementClient(api_key=_API_KEY)
+
+    assert_type(reconnecting(client.audio), typing.ContextManager[ReconnectingAudioSocket])
+    assert_type(reconnecting(client.video), typing.ContextManager[ReconnectingVideoSocket])
+    assert_type(reconnecting(async_client.audio), typing.AsyncContextManager[AsyncReconnectingAudioSocket])
+    assert_type(reconnecting(async_client.video), typing.AsyncContextManager[AsyncReconnectingVideoSocket])

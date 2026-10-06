@@ -533,7 +533,7 @@ except ApiError as error:
     print(f"{error.status_code}: {error.body}")
 ```
 
-Problems during a session arrive as `error` messages rather than exceptions. A rejected frame, such as `invalid_audio_frame`, `invalid_image_frame`, or `rate_limited`, is discarded and the session continues. `config_invalid`, `message_too_large`, an audio `internal_error`, and five consecutive video `internal_error` messages end the session, and `session.closed` follows with `reason` set to `error`. When the server refuses the WebSocket handshake, `connect()` on the async client raises `ApiError` with the HTTP status in `status_code`, and on the sync client it raises `websockets.exceptions.InvalidStatus` with the status in `response.status_code`. A status of 401 means the API key was rejected. A socket from [`reconnecting`](#reconnecting) raises the same errors when the server refuses a reconnect.
+Problems during a session arrive as `error` messages rather than exceptions. A rejected frame, such as `invalid_audio_frame`, `invalid_image_frame`, or `rate_limited`, is discarded and the session continues. `config_invalid`, `message_too_large`, an audio `internal_error`, and five consecutive video `internal_error` messages end the session, and `session.closed` follows with `reason` set to `error`. When the server refuses the WebSocket handshake, `connect()` raises `ApiError` with the HTTP status in `status_code` and the server's response headers in `headers`. A status of 401 means the API key was rejected. A socket from [`reconnecting`](#reconnecting) raises the same error when the server refuses a reconnect.
 
 [Errors](https://dev.hume.ai/expression-measurement/docs/errors) lists every code and whether to retry.
 
