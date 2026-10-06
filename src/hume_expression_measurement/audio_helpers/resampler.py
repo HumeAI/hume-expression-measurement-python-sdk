@@ -113,8 +113,8 @@ class Resampler:
             first 100 ms block returns nothing.
             The realtime voice endpoint rejects empty frames and frames longer than 10 seconds,
             so check the result before sending it, and pass a long recording in blocks of about
-            100 ms rather than in one call. The endpoint accepts the first 30 seconds of audio at
-            once and then 2 seconds of audio per second, so pace the sends for a longer recording.
+            100 ms rather than in one call. Stream the audio in close to real time, no faster
+            than 1 second of audio per second.
         """
         return self._convert(self._to_mono(audio), last=False)
 

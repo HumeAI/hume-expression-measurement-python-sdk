@@ -57,12 +57,12 @@ async def test_each_image_ffmpeg_writes_is_yielded_with_its_time_in_the_video(tm
     images = [_jpeg(1), _jpeg(2), _jpeg(3)]
     ffmpeg_path = _fake_ffmpeg(tmp_path, "sys.stdout.buffer.write(images)", images)
 
-    frames = await _collect(iter_video_frames("interview.mp4", fps=4, ffmpeg_path=ffmpeg_path))
+    frames = await _collect(iter_video_frames("interview.mp4", fps=2, ffmpeg_path=ffmpeg_path))
 
     assert frames == [
         VideoFrame(data=images[0], timestamp_ms=0),
-        VideoFrame(data=images[1], timestamp_ms=250),
-        VideoFrame(data=images[2], timestamp_ms=500),
+        VideoFrame(data=images[1], timestamp_ms=500),
+        VideoFrame(data=images[2], timestamp_ms=1000),
     ]
 
 
@@ -147,9 +147,9 @@ async def test_closing_the_frames_early_stops_ffmpeg(tmp_path: pathlib.Path) -> 
         os.kill(int((tmp_path / "pid").read_text()), 0)
 
 
-@pytest.mark.parametrize("fps", [0, -1, 4.5, math.nan])
+@pytest.mark.parametrize("fps", [0, -1, 3.5, math.nan])
 def test_fps_out_of_range_is_rejected_at_call_time(fps: float) -> None:
-    with pytest.raises(ValueError, match="fps must be above 0 and at most 4"):
+    with pytest.raises(ValueError, match="fps must be above 0 and at most 3"):
         iter_video_frames("interview.mp4", fps=fps)
 
 

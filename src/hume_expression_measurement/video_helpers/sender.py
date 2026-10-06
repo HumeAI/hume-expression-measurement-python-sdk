@@ -27,12 +27,11 @@ from websockets.exceptions import ConnectionClosed
 # is 2,000,000 or 2,097,152 bytes, so the smaller is used.
 _MAX_MESSAGE_BYTES = 2_000_000
 
-# The documented send rate is the first 8 frames at once, then 4 per second. The server also lets
-# unused allowance build up while the client pauses, but how far is not documented, so the client
-# allows no more than the first burst. The client keeps 1 frame of that in reserve: frames sent at
-# exactly the rate arrive unevenly, and the reserve absorbs up to 250 ms of that unevenness.
-_BURST_FRAMES = 7
-_FRAMES_PER_SECOND = 4
+# The documented send rate is 3 frames per second. The client lets up to 2 frames of allowance
+# build up, so that a frame arriving up to a third of a second early, as frames from a live source
+# often do, is sent rather than dropped.
+_BURST_FRAMES = 2
+_FRAMES_PER_SECOND = 3
 
 # The slowest rate the client falls back to, so that a recorded frame waits at most 2 seconds
 # before it is sent again.
@@ -403,8 +402,8 @@ class VideoStream:
                 reader.exception()
 
 
-# Mirrors the server's allowance, so that frames are not sent only to be rejected. It starts at
-# the documented rate and adapts to the rate the server accepts: it halves on each rejection and
+# Paces frames at the documented send rate, so that frames are not sent only to be rejected. It
+# adapts to the rate the server accepts: it halves on each rejection and
 # climbs back slowly while frames are accepted, so a server whose limit is lower than documented
 # rejects a few frames rather than most of them.
 class _Allowance:
