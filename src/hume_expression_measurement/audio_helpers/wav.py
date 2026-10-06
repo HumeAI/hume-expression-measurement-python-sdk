@@ -81,10 +81,13 @@ def iter_wav_frames(path: typing.Union[str, "os.PathLike[str]"], *, frame_ms: in
 
     Examples
     --------
+    import asyncio
+
     from hume_expression_measurement.audio_helpers import iter_wav_frames
 
     for frame in iter_wav_frames("speech.wav"):
         await socket.send_audio_frame(frame)
+        await asyncio.sleep(0.1)
     """
     frame_ms = check_frame_ms(frame_ms)
     frames = FrameBuffer(frame_ms)

@@ -84,7 +84,7 @@ for result in response.measurements:
         print(f"image {result.frame_id}, face {face.face_id} at {face.bbox}: {top}")
 ```
 
-`file` is a list, so one request can carry several JPEG images. `measurements` holds one result per image, in the order sent, and `frame_id` is the image's position in the list. The server lists every face it detects but measures only the largest, 2 by default. A face it did not measure has `face_id`, `expressions`, and `descriptions` set to `None`, so the example skips it. The [video upload guide](https://dev.hume.ai/expression-measurement/docs/video/upload) covers image limits, detection settings, and tracking faces across requests.
+`file` is a list, so one request can carry several JPEG images. `measurements` holds one result per image, in the order sent, and `frame_id` is the image's position in the list. The server lists up to 32 detected faces and measures only the largest, 2 by default. A face it did not measure has `face_id`, `expressions`, and `descriptions` set to `None`, so the example skips it. The [video upload guide](https://dev.hume.ai/expression-measurement/docs/video/upload) covers image limits, detection settings, and tracking faces across requests.
 
 ## Quickstart: realtime
 
@@ -144,7 +144,7 @@ The server detects speech, groups it into utterances, and sends a `measurement.r
 
 ### Video
 
-The video endpoint accepts one complete JPEG image per frame and answers each accepted frame with one `measurement.result` listing every face it detected.
+The video endpoint accepts one complete JPEG image per frame and answers each accepted frame with one `measurement.result` listing up to 32 detected faces.
 
 ```python
 from hume_expression_measurement import (
@@ -331,9 +331,9 @@ async def main() -> None:
                     if face.expressions is None:
                         continue
                     top = ", ".join(f"{score.name} {score.probability:.2f}" for score in face.expressions[:3])
-                    print(f"{reply.timestamp_ms:.0f} ms, face {face.face_id}: {top}")
+                    print(f"{reply.timestamp_ms} ms, face {face.face_id}: {top}")
             else:
-                print(f"{reply.timestamp_ms:.0f} ms: {reply.error.code}")
+                print(f"{reply.timestamp_ms} ms: {reply.error.code}")
         if stream.closed is not None:
             print(f"{stream.closed.produced.measurements} faces measured")
 
@@ -377,7 +377,7 @@ async with contextlib.aclosing(aiter(stream_video(socket, frames))) as replies:
 
 ### Live sources
 
-`stream_video` measures frames from any source you can turn into an async iterable, such as a camera your application already captures. Encode each frame as a JPEG, give it a `timestamp_ms`, and pass `live=True`. A camera usually produces more frames than the 3 per second the endpoint accepts; `stream_video` sends what the send rate allows and counts the rest in `stream.dropped_frames`, so capturing no more than 3 frames per second saves encoding work. Keep frames around 1280 pixels wide.
+`stream_video` measures frames from any source you can turn into an async iterable, such as a camera your application already captures. Encode each frame as a JPEG, give it a `timestamp_ms`, and pass `live=True`. A camera usually produces more frames than the 3 per second the endpoint accepts; `stream_video` sends what the send rate allows and counts the rest in `stream.dropped_frames`, so capturing no more than 3 frames per second saves encoding work. A source that keeps to exactly 3 frames per second can still lose one frame: the first that would put it ahead of 3 per second, counted from when streaming started. That drop leaves a frame of room, so after it a frame is dropped only if the source's timing varies by more than about a sixth of a second. Keep frames around 1280 pixels wide.
 
 `JpegSplitter` turns a byte stream of concatenated JPEG images, such as ffmpeg's `image2pipe` output or the body of an MJPEG stream, into single images. Pass each chunk to `push`, which returns the images completed so far and holds back a partial one. This generator yields frames from such a stream, timed from when it starts:
 
@@ -393,7 +393,7 @@ async def frames_from(mjpeg: typing.AsyncIterable[bytes]) -> typing.AsyncIterato
     start = time.monotonic()
     async for chunk in mjpeg:
         for data in splitter.push(chunk):
-            yield VideoFrame(data=data, timestamp_ms=(time.monotonic() - start) * 1000)
+            yield VideoFrame(data=data, timestamp_ms=round((time.monotonic() - start) * 1000))
 
 
 async for reply in stream_video(socket, frames_from(mjpeg), live=True):

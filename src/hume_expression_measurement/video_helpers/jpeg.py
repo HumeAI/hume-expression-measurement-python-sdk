@@ -45,7 +45,7 @@ class JpegSplitter:
         start = time.monotonic()
         async for chunk in mjpeg:
             for data in splitter.push(chunk):
-                yield VideoFrame(data=data, timestamp_ms=(time.monotonic() - start) * 1000)
+                yield VideoFrame(data=data, timestamp_ms=round((time.monotonic() - start) * 1000))
 
     async for reply in stream_video(socket, frames_from(mjpeg), live=True):
         print(reply.timestamp_ms, reply.error.code if reply.error is not None else len(reply.result.faces))
