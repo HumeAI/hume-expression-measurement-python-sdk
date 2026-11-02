@@ -1,5 +1,4 @@
 name: ci
-
 on: [push]
 
 concurrency:
@@ -47,8 +46,9 @@ jobs:
       - name: Test (aiohttp)
         run: poetry run pytest -rP -n auto -m aiohttp .
 
-  build:
-    name: Build distribution
+  publish:
+    needs: [compile, test]
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -62,43 +62,10 @@ jobs:
           curl -sSL https://install.python-poetry.org | python - -y --version 1.5.1
       - name: Install dependencies
         run: poetry install
-      - name: Build package
-        run: poetry build
-      - name: Store the distribution packages
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-package-distributions
-          path: dist/
-
-  publish:
-    name: Publish to PyPI
-    needs: [compile, test, build]
-    # Only version tags publish. Fern pushes a tag of its own to this repository, and that tag must
-    # not release the package.
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/hume-expression-measurement
-    permissions:
-      contents: read   # Required for checkout
-      id-token: write  # Required for OIDC
-    steps:
-      - name: Download all the dists
-        uses: actions/download-artifact@v4
-        with:
-          name: python-package-distributions
-          path: dist/
-      # A published version can never be published again, so a tag on the wrong commit must fail
-      # here rather than release whatever version that commit holds.
-      - name: Check the tag matches the package version
+      - name: Publish to pypi
         run: |
-          PKG_VERSION=$(basename dist/*.whl | cut -d- -f2)
-          if [[ "${GITHUB_REF_NAME}" != "v${PKG_VERSION}" ]]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match package version ${PKG_VERSION}."
-            exit 1
-          fi
-      - name: Publish to pypi with attestations
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://upload.pypi.org/legacy/
+          poetry config repositories.remote https://upload.pypi.org/legacy/
+          poetry --no-interaction -v publish --build --repository remote --username "$PYPI_USERNAME" --password "$OIDC"
+        env:
+          PYPI_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          OIDC: ${{ secrets.OIDC }}
